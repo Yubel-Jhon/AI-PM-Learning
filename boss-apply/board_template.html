@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>投递看板 · 钟于泊</title>
+<style>
+  :root{
+    --bg:#EDEFF1; --card:#FFFFFF; --well:#F5F6F8;
+    --ink:#22303F; --ink2:#5B6B7C; --ink3:#93A0AD;
+    --line:#D9DEE4; --line2:#E7EAEE;
+    --link:#2E5EAA;
+    --pS:#B3372B; --pA:#96690F; --pB:#3E6396; --pC:#6E7883;
+    --pS-soft:#F4E2DF; --pA-soft:#F3EADA; --pB-soft:#E1E8F1; --pC-soft:#E8EAEC;
+    --focus:#2E5EAA;
+  }
+  [data-theme="dark"]{
+    --bg:#14181D; --card:#1C2229; --well:#171C22;
+    --ink:#DDE4EB; --ink2:#8B98A6; --ink3:#5E6B78;
+    --line:#2A323B; --line2:#232B33;
+    --link:#6E9FE8;
+    --pS:#E07B6E; --pA:#C79A45; --pB:#6E93C4; --pC:#828D99;
+    --pS-soft:#2E2321; --pA-soft:#2B2519; --pB-soft:#1F2733; --pC-soft:#22262B;
+    --focus:#6E9FE8;
+  }
+  @media (prefers-color-scheme: dark){
+    [data-theme="auto"]{
+      --bg:#14181D; --card:#1C2229; --well:#171C22;
+      --ink:#DDE4EB; --ink2:#8B98A6; --ink3:#5E6B78;
+      --line:#2A323B; --line2:#232B33;
+      --link:#6E9FE8;
+      --pS:#E07B6E; --pA:#C79A45; --pB:#6E93C4; --pC:#828D99;
+      --pS-soft:#2E2321; --pA-soft:#2B2519; --pB-soft:#1F2733; --pC-soft:#22262B;
+      --focus:#6E9FE8;
+    }
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:14px/1.5 "Segoe UI","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    display:flex; flex-direction:column;
+  }
+  .serif{font-family:Georgia,"Times New Roman","Noto Serif SC","Source Han Serif SC",SimSun,serif}
+  .num{font-variant-numeric:tabular-nums}
+
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between; gap:24px;
+    padding:26px 32px 18px; border-bottom:1px solid var(--line);
+  }
+  .masthead h1{font-size:30px; font-weight:600; letter-spacing:.04em; line-height:1.15}
+  .masthead p{color:var(--ink2); font-size:12.5px; margin-top:6px}
+  .score{display:flex; gap:26px; align-items:flex-end}
+  .score .cell{text-align:right}
+  .score b{font-size:26px; font-weight:600; display:block; line-height:1}
+  .score span{font-size:11px; color:var(--ink2); display:block; margin-top:4px}
+  .controls{display:flex; gap:8px; margin-left:10px; align-items:center}
+  button{
+    font:12.5px/1 "Segoe UI","Microsoft YaHei UI",sans-serif; color:var(--ink2);
+    background:var(--card); border:1px solid var(--line); border-radius:8px;
+    padding:7px 11px; cursor:pointer;
+  }
+  button:hover{color:var(--ink); border-color:var(--ink3)}
+  :focus-visible{outline:2px solid var(--focus); outline-offset:2px}
+
+  main{flex:1; display:flex; gap:14px; padding:18px 32px 28px; overflow-x:auto; align-items:flex-start}
+  .col{flex:1 0 250px; min-width:250px; max-width:340px; background:var(--well);
+       border:1px solid var(--line2); border-radius:14px; padding:10px;
+       transition:border-color .15s, background .15s}
+  .col.over{border-color:var(--link); background:var(--card)}
+  .col-head{display:flex; align-items:baseline; justify-content:space-between; padding:6px 6px 10px}
+  .col-head h2{font-size:13px; font-weight:600}
+  .col-head .cnt{font-size:12px; color:var(--ink2)}
+  .col-head .mix{font-size:11px; color:var(--ink3); margin-top:2px}
+  .cards{display:flex; flex-direction:column; gap:8px; min-height:60px}
+  .empty{color:var(--ink3); font-size:12px; text-align:center; padding:18px 8px;
+         border:1px dashed var(--line); border-radius:10px}
+
+  .card{
+    position:relative; background:var(--card); border:1px solid var(--line2);
+    border-radius:10px; padding:10px 12px 8px 17px; cursor:grab;
+  }
+  .card.dragging{opacity:.45; cursor:grabbing}
+  .card::before{content:""; position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:2px; background:var(--pc)}
+  .card[data-p="S"]{--pc:var(--pS)} .card[data-p="A"]{--pc:var(--pA)}
+  .card[data-p="B"]{--pc:var(--pB)} .card[data-p="C"]{--pc:var(--pC)}
+  .row1{display:flex; align-items:center; gap:6px}
+  .pbadge{font-size:11px; font-weight:700; padding:1px 6px; border-radius:6px;
+          color:var(--pc); background:var(--pc-soft)}
+  .scorechip{font-size:11px; color:var(--ink2); margin-left:auto}
+  .scorechip b{font-size:12.5px; color:var(--ink)}
+  .title{font-size:14px; font-weight:600; margin-top:5px; line-height:1.35}
+  .corp{font-size:12px; color:var(--ink2); margin-top:2px}
+  .meta{display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; align-items:center}
+  .salary{font-size:12px; font-weight:600; color:var(--ink);
+          background:var(--pB-soft); border-radius:6px; padding:1.5px 7px}
+  .meta i{font-style:normal; font-size:12px; color:var(--ink2)}
+  .big{font-size:11px; color:var(--pA); background:var(--pA-soft); border-radius:6px; padding:1.5px 7px}
+  .tags{font-size:11.5px; color:var(--ink3); margin-top:6px}
+  .note0{font-size:11.5px; color:var(--ink2); margin-top:5px}
+  .stamps{font-size:10.5px; color:var(--ink3); margin-top:5px}
+  .foot{display:flex; gap:5px; align-items:center; margin-top:8px; padding-top:7px; border-top:1px solid var(--line2)}
+  .foot button{padding:4px 7px; font-size:11.5px; border-radius:6px}
+  .foot a.jd{font-size:11.5px; color:var(--link); text-decoration:none;
+             border:1px solid var(--line); border-radius:6px; padding:4px 8px; background:none}
+  .foot a.jd:hover{border-color:var(--link)}
+  .note{flex:1; min-width:0; font-size:11.5px; color:var(--ink2); font-family:inherit;
+        background:none; border:none; border-bottom:1px dashed transparent; padding:2px 1px}
+  .note::placeholder{color:var(--ink3)}
+  .note:hover{border-bottom-color:var(--line)}
+  .note:focus{outline:none; border-bottom-color:var(--link)}
+
+  @media (max-width:760px){
+    header{flex-wrap:wrap; padding:20px 16px 14px}
+    main{padding:14px 16px 24px}
+    .col{flex:0 0 82vw}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="masthead">
+    <h1 class="serif">投递看板</h1>
+    <p id="subline">五城 AI 产品岗 · 抓取自 BOSS直聘 · 关键词「AI产品经理」· 筛 1–3 年</p>
+  </div>
+  <div class="score">
+    <div class="cell"><b class="serif num" id="n-tbd">0</b><span>待投递</span></div>
+    <div class="cell"><b class="serif num" id="n-sent">0</b><span>已投递</span></div>
+    <div class="cell"><b class="serif num" id="n-itv">0</b><span>面试中</span></div>
+    <div class="cell"><b class="serif num" id="n-done">0</b><span>结束</span></div>
+    <div class="controls">
+      <button id="themeBtn" aria-label="切换深浅色">深色</button>
+      <button id="resetBtn" aria-label="重置全部进度">重置</button>
+      <button id="importBtn" aria-label="导入自动投递进度">导入投递</button>
+      <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+    </div>
+  </div>
+</header>
+
+<main id="board"></main>
+
+<script>
+/* ---------- 数据（由 build_kanban.py 注入） ---------- */
+const JOBS = __JOBS_JSON__;
+const SUBLINE = "五城 上海/南京/杭州/深圳/苏州 AI 产品岗 · 共 336 条（S 18 / A 37 / B 147 / C 134）· 2026-09-09 抓自 BOSS直聘 · 筛 1–3 年";
+const COLS = [
+ {key:"tbd",       name:"待投递"},
+ {key:"sent",      name:"已投递"},
+ {key:"screen",    name:"沟通 · 笔试"},
+ {key:"interview", name:"面试中"},
+ {key:"done",      name:"结束"},
+];
+const STORE_KEY = "__STORE_KEY__";
+const DEFAULT_ORDER = JOBS.map(j=>j.id);   /* 已按档位+分数排好 */
+
+/* ---------- 状态 ---------- */
+let state;
+function load(){
+  try{ state = JSON.parse(localStorage.getItem(STORE_KEY)); }catch(e){ state = null; }
+  if(!state || !state.cols) state = fresh();
+  for(const c of COLS) if(!Array.isArray(state.cols[c.key])) state.cols[c.key] = [];
+  if(!state.meta) state.meta = {};
+  for(const j of JOBS) if(!state.meta[j.id]) state.meta[j.id] = {note:j.note0||""};
+  /* 新增岗位（数据更新后）自动落到待投递末尾 */
+  const known = new Set(COLS.flatMap(c=>state.cols[c.key]));
+  for(const id of DEFAULT_ORDER) if(!known.has(id)) state.cols.tbd.push(id);
+}
+function fresh(){
+  const cols = {tbd:[...DEFAULT_ORDER], sent:[], screen:[], interview:[], done:[]};
+  const meta = {}; JOBS.forEach(j=>meta[j.id]={note:j.note0||""});
+  return {cols, meta};
+}
+function save(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+const jobById = Object.fromEntries(JOBS.map(j=>[j.id,j]));
+
+/* ---------- 渲染 ---------- */
+const board = document.getElementById("board");
+const colEls = {};
+
+function buildCard(id){
+  const j = jobById[id]; const m = state.meta[id] || {note:"",stamps:{}};
+  if(!j){ return null; }
+  const el = document.createElement("article");
+  el.className = "card"; el.dataset.p = j.p; el.draggable = true; el.tabIndex = 0;
+  el.dataset.id = id;
+  const jdUrl = "https://www.zhipin.com/job_detail/" + (j.jd || id) + ".html";
+  const stampsHtml = Object.entries(m.stamps||{})
+    .map(([k,v])=>`${COLS.find(c=>c.key===k).name.replace(" · ","")} ${v}`).join(" · ");
+  el.innerHTML = `
+    <div class="row1">
+      <span class="pbadge">${j.p}</span>
+      <span class="scorechip">匹配 <b class="num">${j.sc}</b></span>
+    </div>
+    <div class="title">${j.t}</div>
+    <div class="corp">${j.corp} · ${j.scale}</div>
+    <div class="meta">
+      <span class="salary num">${j.sal}</span>
+      <i>${j.city}${j.loc && j.loc!==j.city ? " "+j.loc : ""}</i>
+      ${j.scale && j.scale.startsWith("10000")?'<span class="big">大厂</span>':""}
+    </div>
+    <div class="tags">${j.tags}</div>
+    ${m.note?`<div class="note0">${m.note}</div>`:""}
+    <div class="stamps">${stampsHtml}</div>
+    <div class="foot">
+      <button class="mvL" aria-label="左移一列" title="左移一列">←</button>
+      <button class="mvR" aria-label="右移一列" title="右移一列">→</button>
+      <a class="jd" href="${jdUrl}" target="_blank" rel="noopener">JD ↗</a>
+      <input class="note" placeholder="记点什么…" value="" aria-label="备注">
+    </div>`;
+  el.querySelector(".mvL").onclick = ()=>move(id,-1);
+  el.querySelector(".mvR").onclick = ()=>move(id, 1);
+  const noteEl = el.querySelector(".note");
+  noteEl.value = m.note||"";
+  noteEl.onchange = ()=>{ state.meta[id].note = noteEl.value; save(); redrawNote(id); };
+  el.addEventListener("dragstart", e=>{
+    e.dataTransfer.setData("text/plain", id); e.dataTransfer.effectAllowed="move";
+    requestAnimationFrame(()=>el.classList.add("dragging"));
+  });
+  el.addEventListener("dragend", ()=>el.classList.remove("dragging"));
+  return el;
+}
+function redrawNote(id){
+  const el = board.querySelector(`.card[data-id="${id}"]`);
+  if(!el) return;
+  const n = state.meta[id].note;
+  let d = el.querySelector(".note0");
+  if(n){ if(!d){ d=document.createElement("div"); d.className="note0";
+    el.querySelector(".stamps").before(d); } d.textContent = n; }
+  else if(d) d.remove();
+}
+
+function render(){
+  board.innerHTML = "";
+  for(const c of COLS){
+    const root = document.createElement("section");
+    root.className = "col"; root.dataset.col = c.key;
+    root.innerHTML = `
+      <div class="col-head">
+        <div><h2>${c.name}</h2><div class="mix num"></div></div>
+        <span class="cnt num">0</span>
+      </div>
+      <div class="cards"></div>
+      <div class="empty"></div>`;
+    const cards = root.querySelector(".cards");
+    colEls[c.key] = {root, cards, empty:root.querySelector(".empty"),
+                     mix:root.querySelector(".mix"), cnt:root.querySelector(".cnt")};
+    for(const id of state.cols[c.key]){ const c0 = buildCard(id); if(c0) cards.appendChild(c0); }
+    refreshCol(c.key);
+
+    cards.addEventListener("dragover", e=>{
+      e.preventDefault();
+      const dragging = board.querySelector(".dragging"); if(!dragging) return;
+      const after = [...cards.querySelectorAll(".card:not(.dragging)")].find(w=>{
+        const r = w.getBoundingClientRect();
+        return e.clientY < r.top + r.height/2;
+      });
+      after ? cards.insertBefore(dragging, after) : cards.appendChild(dragging);
+      root.classList.add("over");
+    });
+    cards.addEventListener("dragleave", ()=>root.classList.remove("over"));
+    cards.addEventListener("drop", e=>{
+      e.preventDefault(); root.classList.remove("over");
+      const id = e.dataTransfer.getData("text/plain"); if(!id) return;
+      const from = colOf(id), to = c.key;
+      state.cols[from] = state.cols[from].filter(x=>x!==id);
+      const idx = [...cards.children].indexOf(board.querySelector(`.card[data-id="${id}"]`));
+      const target = state.cols[to];
+      target.splice(idx<0?target.length:idx, 0, id);
+      stamp(id, to, from);
+      save(); refreshCol(from); refreshCol(to); refreshCounts();
+    });
+    board.appendChild(root);
+  }
+  refreshCounts();
+}
+
+function refreshCol(key){
+  const {cards, empty, mix, cnt, root} = colEls[key];
+  cards.innerHTML = "";
+  for(const id of state.cols[key]){ const c0 = buildCard(id); if(c0) cards.appendChild(c0); }
+  const col = COLS.find(c=>c.key===key);
+  if(key==="tbd"){
+    const g = p=>state.cols.tbd.filter(i=>jobById[i].p===p).length;
+    mix.textContent = `S ${g("S")} · A ${g("A")} · B ${g("B")} · C ${g("C")}`;
+  } else mix.textContent = "";
+  cnt.textContent = state.cols[key].length;
+  const hints = {tbd:"按优先级从上往下投", sent:"拖入即记投递日期", screen:"HR 沟通中、约面、笔试",
+                 interview:"面试进行中", done:"Offer 或无缘，备注里写结果"};
+  if(cards.children.length===0){
+    empty.textContent = hints[key] || "拖到这里";
+    empty.style.display = "block";
+  } else empty.style.display = "none";
+}
+
+function colOf(id){
+  for(const c of COLS) if(state.cols[c.key].includes(id)) return c.key;
+  return "tbd";
+}
+function move(id, dir){
+  const from = colOf(id), ti = COLS.findIndex(c=>c.key===from), to = COLS[ti+dir];
+  if(!to) return;
+  state.cols[from] = state.cols[from].filter(x=>x!==id);
+  state.cols[to.key].push(id);
+  stamp(id, to.key, from);
+  save(); refreshCol(from); refreshCol(to.key); refreshCounts();
+}
+function stamp(id, to, from){
+  const m = state.meta[id]; m.stamps = m.stamps||{};
+  const t = new Date();
+  const d = `${t.getMonth()+1}`.padStart(2,"0")+"-"+`${t.getDate()}`.padStart(2,"0");
+  if(to==="tbd"){ delete m.stamps[from]; }
+  else if(!m.stamps[to]) m.stamps[to] = d;
+  const el = board.querySelector(`.card[data-id="${id}"] .stamps`);
+  if(el) el.innerHTML = Object.entries(m.stamps)
+    .map(([k,v])=>`${COLS.find(c=>c.key===k).name.replace(" · ","")} ${v}`).join(" · ");
+}
+
+function refreshCounts(){
+  const n = k=>state.cols[k].length;
+  document.getElementById("n-tbd").textContent = n("tbd");
+  document.getElementById("n-sent").textContent = n("sent");
+  document.getElementById("n-itv").textContent = n("interview")+n("screen");
+  document.getElementById("n-done").textContent = n("done");
+}
+
+/* ---------- 控件 ---------- */
+if(SUBLINE) document.getElementById("subline").textContent = SUBLINE;
+const themeBtn = document.getElementById("themeBtn");
+const THEMES = [["auto","深色"],["light","深色"],["dark","浅色"]];
+let ti = 0;
+themeBtn.onclick = ()=>{
+  ti = (ti+1)%3;
+  document.documentElement.dataset.theme = THEMES[ti][0];
+  themeBtn.textContent = THEMES[ti][1];
+};
+document.getElementById("resetBtn").onclick = ()=>{
+  if(!confirm("重置全部进度？所有卡片回到「待投递」。")) return;
+  state = fresh(); save(); render();
+};
+
+/* ---------- 导入自动投递进度 ---------- */
+function importProgress(file){
+  const rd = new FileReader();
+  rd.onload = () => {
+    try{
+      const data = JSON.parse(rd.result);
+      const items = data.jobs || {};
+      const MAP = {applied:"sent", already_contacted:"sent", offline:"done"};
+      const RANK = {tbd:0, sent:1, screen:2, interview:3, done:4};
+      const today = new Date().toISOString().slice(0,10);
+      let moved=0, skipped=0, unknown=0, ignored=0;
+      for(const [id, info] of Object.entries(items)){
+        const target = MAP[info.st];
+        if(!target){ ignored++; continue; }
+        if(!jobById[id]){ unknown++; continue; }
+        const cur = colOf(id);
+        if(RANK[target] <= RANK[cur]){ skipped++; continue; }
+        for(const c of COLS){ const arr = state.cols[c.key], i = arr.indexOf(id);
+          if(i>=0) arr.splice(i,1); }
+        state.cols[target].push(id);
+        const m = state.meta[id]; m.stamps = m.stamps||{};
+        if(!m.stamps[target]) m.stamps[target] = today;
+        if(info.note){ m.note = m.note ? m.note+" | 自动:"+info.note : "自动:"+info.note; }
+        moved++;
+      }
+      save(); render();
+      alert(`导入完成：前进 ${moved} 条，跳过 ${skipped} 条（只前进不降级），`+
+            `未匹配 ${unknown} 条，无关状态 ${ignored} 条`);
+    }catch(e){ alert("导入失败: " + e.message); }
+  };
+  rd.readAsText(file);
+}
+const importBtn = document.getElementById("importBtn");
+const importFile = document.getElementById("importFile");
+if(importBtn) importBtn.onclick = () => importFile.click();
+if(importFile) importFile.onchange = e => {
+  if(e.target.files[0]) importProgress(e.target.files[0]);
+  e.target.value = "";
+};
+
+load(); render();
+</script>
+</body>
+</html>
