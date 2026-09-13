@@ -125,7 +125,7 @@
 <header>
   <div class="masthead">
     <h1 class="serif">投递看板</h1>
-    <p id="subline">五城 AI 产品岗 · 抓取自 BOSS直聘 · 关键词「AI产品经理」· 筛 1–3 年</p>
+    <p id="subline">抓取自 BOSS直聘</p>
   </div>
   <div class="score">
     <div class="cell"><b class="serif num" id="n-tbd">0</b><span>待投递</span></div>
@@ -144,9 +144,9 @@
 <main id="board"></main>
 
 <script>
-/* ---------- 数据（由 build_kanban.py 注入） ---------- */
+/* ---------- 数据（由 apply_boss.py 注入） ---------- */
 const JOBS = __JOBS_JSON__;
-const SUBLINE = "五城 上海/南京/杭州/深圳/苏州 AI 产品岗 · 共 336 条（S 18 / A 37 / B 147 / C 134）· 2026-09-09 抓自 BOSS直聘 · 筛 1–3 年";
+const SUBLINE = __SUBLINE__;
 const COLS = [
  {key:"tbd",       name:"待投递"},
  {key:"sent",      name:"已投递"},

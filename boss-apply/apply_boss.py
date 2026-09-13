@@ -43,6 +43,26 @@ DEFAULT_CONFIG = {
     "min_delay_s": 18,
     "max_delay_s": 45,
     "priorities": ["S", "A"],
+    # ---- 换方向/换城市改这里（改完跑 scrape → board）----
+    "keywords": ["AI产品经理", "Agent产品经理"],
+    "cities": {"上海": "101020100", "深圳": "101280600", "杭州": "101210100",
+               "南京": "101190100", "苏州": "101190400"},
+    # 抓回来的岗位必须「命中 must_have 任一词」且「命中 role 任一词」才保留，
+    # 标题命中 blacklist 任一词直接丢弃，城市必须在 cities 里
+    "filter": {
+        "must_have": ["AI", "AIGC", "AGI", "人工智能", "大模型", "LLM", "GPT", "NLP", "智能",
+                      "算法", "机器学习", "深度学习", "智能体", "Agent", "多模态", "生成式",
+                      "RAG", "Copilot", "Chatbot", "数字人", "语音", "计算机视觉"],
+        "role": ["产品", "Product", "PM", "解决方案", "交付"],
+        "blacklist": ["美术", "特效", "地编", "原画", "开发", "程序", "测试", "工程师岗前训",
+                      "广告投放专员", "营销", "电商运营", "客服", "销售", "行政", "人事",
+                      "前端", "后端"]
+    },
+    # 评分加分词（换方向时建议换成对应领域词，否则评不出 S 档）
+    "score_hints": {"agent": 2.0, "智能体": 2.0, "大模型": 2.0, "llm": 2.0,
+                    "ai产品": 2.0, "rag": 1.5, "多模态": 1.5, "语音": 1.5,
+                    "语义": 1.5, "aigc": 1.0, "数字人": 1.0, "nlp": 1.0,
+                    "chatbot": 1.0, "copilot": 1.0},
     "max_run_minutes": 45,
     "captcha_wait_s": 300,
     "profile_dir": r"C:\Users\Admin\.boss-zhipin-scraper\chrome-profile",
@@ -75,8 +95,14 @@ def load_config():
         CONFIG_FILE.write_text(json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2), encoding="utf-8")
         log(f"已生成默认配置 {CONFIG_FILE}")
     cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    merged = dict(DEFAULT_CONFIG); merged.update(cfg)
-    merged["selectors"] = {**DEFAULT_CONFIG["selectors"], **cfg.get("selectors", {})}
+    merged = dict(DEFAULT_CONFIG)
+    for k, v in cfg.items():
+        # 嵌套 dict（selectors/filter/refresh/score_hints…）按一层深合并，
+        # 用户只改其中一个子键不会丢掉其余默认值
+        if isinstance(v, dict) and isinstance(merged.get(k), dict):
+            merged[k] = {**merged[k], **v}
+        else:
+            merged[k] = v
     return merged
 
 def load_progress():
@@ -576,7 +602,7 @@ def cmd_apply(cfg, limit=None, priority=None, ids=None, dry_run=False, refresh=F
                     last_refresh = time.time()
                     try:
                         fresh, _ = refresh_all(
-                            page, cfg["board_html"],
+                            page, cfg, cfg["board_html"],
                             max_new_per_round=rcfg["max_new_per_round"],
                             existing_ids={j["id"] for j in jobs},
                             progress_ids=set(progress.get("jobs", {}).keys()))
@@ -648,6 +674,19 @@ def cmd_doctor(cfg):
     except Exception as e:
         print(f"[!!] 数据目录不可写: {e}")
         ok = False
+    # 方向检查：keywords/cities/filter 没写就会静默用默认值（AI产品经理），必须点破
+    try:
+        raw_cfg = json.loads(CONFIG_FILE.read_text(encoding="utf-8")) if CONFIG_FILE.exists() else {}
+        missing = [k for k in ("keywords", "cities", "filter", "score_hints") if k not in raw_cfg]
+        if missing:
+            print(f"[!!] config.json 缺 {', '.join(missing)} —— 正在用内置默认（AI产品经理方向）")
+            print(f"     换方向必改: {CONFIG_FILE}")
+            ok = False
+        else:
+            print(f"[OK] 关键词: {cfg['keywords']}  城市: {list(cfg['cities'])}")
+    except Exception as e:
+        print(f"[!!] 配置读取失败: {e}")
+        ok = False
     prog = load_progress()
     if prog:
         today = datetime.now().strftime("%Y-%m-%d")
@@ -674,23 +713,7 @@ def cmd_login(cfg):
 
 LISTEN_TARGET = "wapi/zpgeek/search/joblist.json"
 
-KEYWORDS = ["AI产品经理", "Agent产品经理"]
-CITIES = {  # cityName 自校验：code 错了抓回来的城市名不匹配会被过滤，不污染看板
-    "上海": "101020100", "深圳": "101280600", "杭州": "101210100",
-    "南京": "101190100", "苏州": "101190400",
-}
-
-AI_TERMS = ['AI', 'AIGC', 'AGI', '人工智能', '大模型', 'LLM', 'GPT', 'NLP', '智能',
-            '算法', '机器学习', '深度学习', '智能体', 'AGENT', '多模态', '生成式',
-            'RAG', 'COPILOT', 'CHATBOT', '数字人', '语音', '计算机视觉']
-ROLE_TERMS = ['产品', 'PRODUCT', 'PM', '解决方案', '交付']
-BLACKLIST = ['美术', '特效', '地编', '原画', '开发', '程序', '测试', '工程师岗前训',
-             '广告投放专员', '营销', '电商运营', '客服', '销售', '行政', '人事', '前端', '后端']
-
-SCORE_HINTS = [("agent", 2.0), ("智能体", 2.0), ("大模型", 2.0), ("llm", 2.0),
-               ("ai产品", 2.0), ("rag", 1.5), ("多模态", 1.5), ("语音", 1.5),
-               ("语义", 1.5), ("aigc", 1.0), ("数字人", 1.0), ("nlp", 1.0),
-               ("chatbot", 1.0), ("copilot", 1.0)]
+# 关键词/城市/过滤词/评分词全部来自 config（DEFAULT_CONFIG 提供默认值），见 relevant()/score()
 
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
@@ -768,25 +791,27 @@ def parse_salary_k(sal):
     m = re.match(r"(\d+)K", sal or "")
     return float(m.group(1)) if m else 0.0
 
-def relevant(j):
+def relevant(j, cfg):
+    f = cfg["filter"]
     text = f"{j['title']} {j['skills']}".upper()
-    if not (any(k.upper() in text for k in AI_TERMS)
-            and any(k.upper() in text for k in ROLE_TERMS)):
+    if not (any(k.upper() in text for k in f["must_have"])
+            and any(k.upper() in text for k in f["role"])):
         return False, "不相关"
     title = j["title"].upper()
-    for b in BLACKLIST:
+    for b in f["blacklist"]:
         if b.upper() in title:
             return False, f"黑名单:{b}"
     if not j["eid"]:
         return False, "无encryptId"
-    if j["city"] not in CITIES:
+    # cityName 自校验：code 错了抓回来的城市名不匹配会被过滤，不污染看板
+    if j["city"] not in cfg["cities"]:
         return False, f"城市:{j['city']}"
     return True, ""
 
-def score(j):
+def score(j, cfg):
     text = f"{j['title']} {j['skills']}".lower()
     sc = 8.0
-    hit = sum(w for kw, w in SCORE_HINTS if kw in text)
+    hit = sum(w for kw, w in cfg["score_hints"].items() if kw in text)
     sc += min(hit, 6.0)
     k = parse_salary_k(j["salary"])
     if k >= 25: sc += 3
@@ -797,8 +822,8 @@ def score(j):
     sc = max(5, min(18, round(sc)))
     return sc
 
-def to_board_job(j):
-    sc = score(j)
+def to_board_job(j, cfg):
+    sc = score(j, cfg)
     return {
         "id": j["eid"], "p": "S" if sc >= 11 else ("A" if sc >= 8 else "B"),
         "sc": sc, "t": j["title"], "corp": j["corp"], "loc": j["loc"],
@@ -806,11 +831,10 @@ def to_board_job(j):
         "tags": j["skills"][:60], "note0": "", "jd": j["eid"], "src": "r",
     }
 
-def refresh_all(page, board_html, max_new_per_round=10, keywords=None, cities=None,
+def refresh_all(page, cfg, board_html, max_new_per_round=10,
                 existing_ids=None, progress_ids=None):
     """跑一轮快刷：全部 关键词×城市 组合 → 过滤 → 合并看板。返回 (新增列表, 统计)"""
-    keywords = keywords or KEYWORDS
-    cities = cities or CITIES
+    keywords, cities = cfg["keywords"], cfg["cities"]
     existing_ids = existing_ids or set()
     progress_ids = progress_ids or set()
     seen, uniq = set(), []
@@ -825,12 +849,12 @@ def refresh_all(page, board_html, max_new_per_round=10, keywords=None, cities=No
             time.sleep(random.uniform(2.5, 5.0))
     ok, rej = [], 0
     for j in uniq:
-        good, why = relevant(j)
+        good, why = relevant(j, cfg)
         if good:
             ok.append(j)
         else:
             rej += 1
-    cand = [to_board_job(j) for j in ok]
+    cand = [to_board_job(j, cfg) for j in ok]
     fresh = [c for c in cand if c["id"] not in existing_ids and c["id"] not in progress_ids]
     fresh.sort(key=lambda c: (-c["sc"], c["id"]))
     fresh = fresh[:max_new_per_round]
@@ -896,10 +920,8 @@ def scrape_combo_deep(page, keyword, city_code, max_scrolls=25, target=60):
             pass
     return jobs
 
-def full_scrape(page, keywords=None, cities=None, per_combo_target=60):
+def full_scrape(page, keywords, cities, per_combo_target=60):
     """全量抓取所有 关键词×城市，返回去重后的原始岗位列表"""
-    keywords = keywords or KEYWORDS
-    cities = cities or CITIES
     seen, uniq = set(), []
     for kw in keywords:
         for cname, ccode in cities.items():
@@ -912,13 +934,13 @@ def full_scrape(page, keywords=None, cities=None, per_combo_target=60):
             time.sleep(random.uniform(2.5, 5.0))
     return uniq
 
-def scrape_to_board_jobs(raw):
+def scrape_to_board_jobs(raw, cfg):
     """原始抓取 → 过滤 → 打分 → 看板字段（不查重，供首次建库用）"""
     ok = []
     for j in raw:
-        good, _ = relevant(j)
+        good, _ = relevant(j, cfg)
         if good:
-            ok.append(to_board_job(j))
+            ok.append(to_board_job(j, cfg))
     ok.sort(key=lambda c: (-c["sc"], c["id"]))
     return ok
 
@@ -950,7 +972,17 @@ def prune_offline(board_html, progress):
     tmp.replace(p)
     return removed
 
-def generate_board(template_path, board_path, jobs, store_key="kanban-boss-apply"):
+def build_subline(cfg, jobs):
+    """看板副标题：关键词 · 城市 · 档位统计 · 抓取日期（跟着 config 走）"""
+    s = sum(1 for j in jobs if j["p"] == "S")
+    a = sum(1 for j in jobs if j["p"] == "A")
+    b = sum(1 for j in jobs if j["p"] not in ("S", "A"))
+    return (f"{'、'.join(cfg['keywords'])} · {'/'.join(cfg['cities'])} · "
+            f"共 {len(jobs)} 条（S {s} / A {a} / B {b}）· "
+            f"{datetime.now().strftime('%Y-%m-%d')} 抓自 BOSS直聘")
+
+def generate_board(template_path, board_path, jobs, store_key="kanban-boss-apply",
+                   subline="抓取自 BOSS直聘"):
     """从模板生成全新看板"""
     tpl = Path(template_path).read_text(encoding="utf-8")
     if "__JOBS_JSON__" not in tpl:
@@ -958,6 +990,9 @@ def generate_board(template_path, board_path, jobs, store_key="kanban-boss-apply
     html = tpl.replace("__JOBS_JSON__",
                        json.dumps(jobs, ensure_ascii=False, separators=(",", ":")))
     html = html.replace("__STORE_KEY__", store_key)
+    # json.dumps 产出带引号的合法 JS 字符串，防副标题里的引号/反斜杠破坏脚本
+    html = html.replace("__SUBLINE__",
+                        json.dumps(subline, ensure_ascii=False))
     bp = Path(board_path)
     if bp.exists():
         bak = bp.with_suffix(bp.suffix + ".bak")
@@ -975,13 +1010,16 @@ def cmd_init(cfg):
         print(f"已生成默认配置: {CONFIG_FILE}")
     print("\n下一步（改完配置再跑）:")
     print(f"  1. 编辑 {CONFIG_FILE}:")
-    print("     keywords  想投的岗位关键词（如 [\"AI产品经理\"]）")
-    print("     cities    城市和BOSS城市码（如 {\"上海\": \"101020100\"}）")
-    print("     board_html 生成的看板保存位置")
-    print("  2. python apply_boss.py login    扫码登录")
-    print("  3. python apply_boss.py scrape   全量抓岗位 → jobs.json")
-    print("  4. python apply_boss.py board    生成看板 HTML")
-    print("  5. python apply_boss.py auto     每日自动投递+边投边补新岗")
+    print("     keywords    想投的岗位关键词（如 [\"AI产品经理\"]）")
+    print("     cities      目标城市 → BOSS城市码（如 {\"上海\": \"101020100\"}）")
+    print("     filter      相关性过滤词 must_have / role / blacklist（换方向必须改）")
+    print("     score_hints 评分加分词（换方向建议改成对应领域词）")
+    print("     board_html  生成的看板保存位置")
+    print("  2. python apply_boss.py doctor   确认关键词/城市已生效")
+    print("  3. python apply_boss.py login    扫码登录")
+    print("  4. python apply_boss.py scrape   全量抓岗位 → jobs.json")
+    print("  5. python apply_boss.py board    生成看板 HTML")
+    print("  6. python apply_boss.py auto     每日自动投递+边投边补新岗")
     return 0
 
 def cmd_scrape(cfg, per_city=60):
@@ -989,13 +1027,13 @@ def cmd_scrape(cfg, per_city=60):
     if not session_ok(page):
         log("!! 会话无效，请先 login")
         return 3
-    log(f"全量深抓: {len(cfg.get('keywords', KEYWORDS))} 关键词 × "
-        f"{len(cfg.get('cities', CITIES))} 城市, 每组合目标 {per_city} 条 ...")
+    log(f"全量深抓: {len(cfg['keywords'])} 关键词 × "
+        f"{len(cfg['cities'])} 城市, 每组合目标 {per_city} 条 ...")
     raw = full_scrape(page,
-                         keywords=cfg.get("keywords") or None,
-                         cities=cfg.get("cities") or None,
-                         per_combo_target=per_city)
-    jobs = scrape_to_board_jobs(raw)
+                      keywords=cfg["keywords"],
+                      cities=cfg["cities"],
+                      per_combo_target=per_city)
+    jobs = scrape_to_board_jobs(raw, cfg)
     out = DATA_DIR / "jobs.json"
     out.write_text(json.dumps(
         {"scraped_at": datetime.now().isoformat(timespec="seconds"),
@@ -1022,7 +1060,8 @@ def cmd_board(cfg, source=None):
         return 1
     slug = re.sub(r"\W+", "-", Path(cfg["board_html"]).stem) or "boss-apply"
     n = generate_board(tpl, cfg["board_html"], jobs,
-                         store_key=f"kanban-{slug.lower()}")
+                       store_key=f"kanban-{slug.lower()}",
+                       subline=build_subline(cfg, jobs))
     print(f"看板已生成: {cfg['board_html']}  ({n} 条岗位)")
     print("用浏览器打开即可使用；右上「导入投递」可同步自动投递进度")
     return 0

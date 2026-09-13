@@ -88,16 +88,34 @@ pip install DrissionPage==4.1.1.4
 python apply_boss.py init
 ```
 
-第 2 步会生成 `~/.boss-apply/config.json`，**打开它改三处**：
+第 2 步会生成 `~/.boss-apply/config.json`，**打开它改这四组**（默认值是 AI 产品经理方向，换方向必须全改，缺一个抓回来的都是别的方向岗位或直接被过滤光）：
 
 ```jsonc
 {
-  "keywords": ["AI产品经理", "AI Agent"],   // 改成你的岗位关键词，可以多个
-  "cities": ["101010100", "310100"],         // 改成你的目标城市（码表见下）
-  "priorities": ["S", "A"],                  // 投递档位，S/A = 只投好岗位
+  // ① 搜索关键词：想投什么岗位就写什么
+  "keywords": ["AI产品经理", "AI Agent"],
+
+  // ② 目标城市：格式必须是 {"城市名": "BOSS城市码"}，城市名要写对（用于校验）
+  "cities": {"北京": "101010100", "上海": "101020100"},
+
+  // ③ 相关性过滤：岗位必须「标题/技能含 must_have 任一词」且「含 role 任一词」，
+  //    标题命中 blacklist 任一词直接丢弃。换方向时这三个列表都要换成新领域的词
+  "filter": {
+    "must_have": ["AI", "大模型", "LLM"],
+    "role": ["产品", "PM"],
+    "blacklist": ["开发", "测试", "销售"]
+  },
+
+  // ④ 评分加分词：决定 S/A/B 档位（S≥11, A≥8, B<8）。换方向时换成新领域词，
+  //    不改的话新方向的岗位大多只能评 A，配合下面 priorities:["S","A"] 也能投，但排序变差
+  "score_hints": {"大模型": 2.0, "llm": 2.0},
+
+  "priorities": ["S", "A"],                  // 投递档位
   "daily_cap": 25                            // 每天最多投几条，建议 ≤30
 }
 ```
+
+改完先跑 `python apply_boss.py doctor`，它会明确告诉你关键词/城市是否已生效、还是仍在用内置默认。
 
 ```bash
 # 第 3 步：全量抓岗位（会弹出 Chrome 自动翻页，几分钟）
@@ -126,9 +144,24 @@ python apply_boss.py auto
 
 ### 场景 C：换岗位方向 / 换城市
 
-改 `~/.boss-apply/config.json` 里的 `keywords` 和 `cities`，然后：
+**只改 `keywords`/`cities` 不够**——`filter`（must_have/role/blacklist）和 `score_hints` 也是按方向写死的默认值，不改的话新方向岗位会被当「不相关」过滤光。四组一起改：
+
+```jsonc
+// 例：换成「跨境电商运营」方向
+"keywords": ["跨境电商运营", "亚马逊运营"],
+"cities": {"深圳": "101280600", "广州": "101280100"},
+"filter": {
+  "must_have": ["电商", "跨境", "亚马逊", "Shopify", "独立站"],
+  "role": ["运营", "推广"],
+  "blacklist": ["开发", "测试", "客服"]
+},
+"score_hints": {"亚马逊": 2.0, "独立站": 1.5, "shopify": 1.5, "选品": 1.0}
+```
+
+然后：
 
 ```bash
+python apply_boss.py doctor    # 确认配置已生效（缺项会红字警告）
 python apply_boss.py scrape    # 重新全量抓
 python apply_boss.py board     # 重新生成看板（已有投递记录不受影响）
 ```
@@ -179,9 +212,14 @@ python apply_boss.py export            # 强制把 progress 同步进看板
 
 ```jsonc
 {
-  "keywords": ["AI产品经理", "AI Agent"],     // 搜索关键词
-  "cities":   ["101210100"],                  // 城市码，可多个
-  "blacklist": ["销售", "客服", "外包"],       // 岗位标题含这些词直接不要
+  "keywords": ["AI产品经理", "AI Agent"],     // 搜索关键词，可多个
+  "cities":   {"杭州": "101210100"},          // {"城市名": "BOSS城市码"}，城市名参与校验必须写对
+  "filter": {                                 // 相关性过滤（换方向必须改）
+    "must_have": ["AI", "大模型"],             // 标题/技能须命中任一词
+    "role": ["产品", "PM"],                    // 且须命中任一词
+    "blacklist": ["销售", "客服"]              // 标题命中任一词直接丢弃
+  },
+  "score_hints": {"大模型": 2.0, "rag": 1.5}, // 评分加分词（S≥11, A≥8, B<8），换方向建议改
   "priorities": ["S", "A"],                   // 只有这些档位会进投递队列
   "daily_cap": 25,                            // 每日真投上限（已投的不重复计）
   "min_delay_s": 18, "max_delay_s": 45,       // 两条投递间的随机停顿区间（防风控）
@@ -199,6 +237,16 @@ python apply_boss.py export            # 强制把 progress 同步进看板
   }
 }
 ```
+
+常用 BOSS 城市码（其余城市可从 BOSS 搜索页 URL 的 `city=` 参数里抄）：
+
+| 城市 | 码 | 城市 | 码 |
+|---|---|---|---|
+| 北京 | 101010100 | 上海 | 101020100 |
+| 广州 | 101280100 | 深圳 | 101280600 |
+| 杭州 | 101210100 | 南京 | 101190100 |
+| 苏州 | 101190400 | 成都 | 101270100 |
+| 武汉 | 101200100 | 西安 | 101110100 |
 
 ## 投递状态判定（progress.json 里的 `st`）
 
