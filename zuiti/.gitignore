@@ -1,0 +1,5 @@
+# 本地隐私数据 —— 不入库（真实钉钉聊天记录/构建产物）
+dumps/
+context.db
+__pycache__/
+*.pyc

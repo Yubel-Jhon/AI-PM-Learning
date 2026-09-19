@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>嘴替 · 系统架构 v2</title>
+<style>
+  :root{
+    --bg:#0B0D13; --panel:#12141D; --card:#171922; --card2:#232634; --line:#2C3040;
+    --text:#ECEEF5; --muted:#868CA0;
+    --accent:#4C7DFF; --accent2:#8A5CFF; --ok:#3DDC84; --warn:#FFC24B; --err:#FF6B6B; --info:#7CB8FF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"Microsoft YaHei UI","PingFang SC",sans-serif;
+    line-height:1.65; padding:48px 24px 80px;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+
+  /* ---------- 头部 ---------- */
+  .hero{padding:8px 0 36px;border-bottom:1px solid var(--line);margin-bottom:40px}
+  .hero h1{font-size:34px;letter-spacing:1px}
+  .hero h1 em{font-style:normal;background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{color:var(--muted);margin-top:10px;font-size:15px;max-width:760px}
+  .tags{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap}
+  .tag{font-size:12px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
+  .tag.b{border-color:rgba(76,125,255,.45);color:var(--info)}
+  .tag.g{border-color:rgba(61,220,132,.4);color:var(--ok)}
+
+  /* ---------- 章节 ---------- */
+  section{margin-bottom:64px}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+  .sec-no{font-size:13px;color:var(--accent);font-weight:700;letter-spacing:2px}
+  .sec-head h2{font-size:21px}
+  .sec-sub{color:var(--muted);font-size:13.5px;margin-bottom:22px;max-width:860px}
+
+  /* ---------- 分层全景 ---------- */
+  .layer{display:grid;grid-template-columns:150px 1fr;gap:0;
+    background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .layer+.layer{margin-top:0}
+  .layer .lab{padding:16px 18px;border-right:1px solid var(--line);background:var(--card2)}
+  .layer .lab b{display:block;font-size:14.5px}
+  .layer .lab span{font-size:11.5px;color:var(--muted)}
+  .layer .lab.human b{color:var(--info)} .layer .lab.orch b{color:var(--accent)}
+  .layer .lab.eng b{color:var(--accent2)} .layer .lab.model b{color:var(--ok)} .layer .lab.mem2 b{color:var(--warn)}
+  .comps{padding:13px 16px;display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+  .chip{font-size:12.5px;background:var(--card2);border:1px solid var(--line);
+    border-radius:8px;padding:5px 11px;color:var(--text)}
+  .chip small{display:block;font-size:10.5px;color:var(--muted);line-height:1.4;margin-top:1px}
+  .chip.hot{border-color:rgba(76,125,255,.5)}
+  .chip.core{border-color:rgba(138,92,255,.55);background:rgba(138,92,255,.08)}
+  .chip.new{border-color:rgba(61,220,132,.45)}
+  .chip.new::before{content:"v2 ";font-size:10px;color:var(--ok);font-weight:700}
+  .flow-arrow{text-align:center;color:var(--muted);font-size:13px;padding:5px 0}
+  .flow-arrow b{color:var(--accent);font-size:14px}
+  .xcut{margin-top:18px;border:1px dashed var(--line);border-radius:12px;padding:12px 16px;
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--panel)}
+  .xcut .t{font-size:12.5px;color:var(--muted);min-width:96px}
+  .xcut .chip{background:var(--card)}
+
+  /* ---------- 数据流 ---------- */
+  .pipe{display:flex;flex-wrap:wrap;gap:0;align-items:stretch}
+  .step{flex:1 1 150px;min-width:150px;background:var(--card);border:1px solid var(--line);
+    border-radius:10px;padding:12px 13px;position:relative;margin:0 22px 14px 0}
+  .step::after{content:"→";position:absolute;right:-19px;top:50%;transform:translateY(-50%);
+    color:var(--accent);font-weight:700}
+  .step:last-child::after{content:""}
+  .step .n{font-size:10.5px;color:var(--accent);font-weight:700;letter-spacing:1px}
+  .step b{display:block;font-size:13.5px;margin:2px 0 3px}
+  .step span{font-size:11.5px;color:var(--muted);line-height:1.5;display:block}
+  .step.qc{border-color:rgba(255,194,75,.45)}
+  .step.qc .n{color:var(--warn)}
+  .step.out{border-color:rgba(61,220,132,.4)}
+  .step.out .n{color:var(--ok)}
+  .branch{display:flex;gap:12px;flex-wrap:wrap;margin-top:6px}
+  .br{font-size:12px;border:1px dashed var(--line);border-radius:8px;padding:8px 14px;color:var(--muted)}
+  .br b{color:var(--warn)} .br.g b{color:var(--ok)}
+
+  /* ---------- 质量闭环 ---------- */
+  .loop{display:flex;flex-wrap:wrap;gap:0;align-items:center;background:var(--card);
+    border:1px solid var(--line);border-radius:12px;padding:22px 18px}
+  .node{background:var(--card2);border:1px solid var(--line);border-radius:9px;
+    padding:9px 14px;font-size:13px;text-align:center;margin:0 20px 0 0;position:relative}
+  .node::after{content:"→";position:absolute;right:-17px;top:50%;transform:translateY(-50%);
+    color:var(--muted);font-weight:700}
+  .node:last-child::after{content:""}
+  .node small{display:block;font-size:10.5px;color:var(--muted);margin-top:1px}
+  .node.ok{border-color:rgba(61,220,132,.5)} .node.ok b{color:var(--ok)}
+  .node.warn{border-color:rgba(255,194,75,.5)} .node.warn b{color:var(--warn)}
+  .node.err{border-color:rgba(255,107,107,.5)} .node.err b{color:var(--err)}
+  .node b{font-size:13px}
+  .loop-notes{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap}
+  .loop-notes .br{flex:1 1 260px}
+
+  /* ---------- 记忆库 ---------- */
+  .mem{display:grid;grid-template-columns:1fr 40px 1.15fr 40px 1fr;gap:0;align-items:stretch}
+  .mem .col{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .mem .col h3{font-size:14.5px;margin-bottom:4px}
+  .mem .col .sub{font-size:11.5px;color:var(--muted);margin-bottom:12px}
+  .mem .arrow{display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:20px;font-weight:700}
+  .tier{border-left:3px solid var(--line);padding:6px 10px;margin-bottom:8px;background:var(--card2);border-radius:0 8px 8px 0}
+  .tier b{font-size:12.5px;display:block}
+  .tier span{font-size:11px;color:var(--muted)}
+  .tier.p{border-color:var(--warn)} .tier.s{border-color:var(--info)} .tier.w{border-color:var(--muted)}
+  .tbl{width:100%;border-collapse:collapse;font-size:12px}
+  .tbl th{text-align:left;color:var(--muted);font-weight:400;padding:4px 8px;border-bottom:1px solid var(--line)}
+  .tbl td{padding:5px 8px;border-bottom:1px solid rgba(44,48,64,.5)}
+  .tbl td:first-child{color:var(--info)}
+  .prod{font-size:12.5px}
+  .prod li{margin:7px 0 7px 16px;color:var(--text)}
+  .prod li small{color:var(--muted);display:block;font-size:11px}
+
+  /* ---------- 降级矩阵 ---------- */
+  table.mx{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;overflow:hidden;font-size:13px}
+  .mx th{background:var(--card2);color:var(--muted);font-weight:400;text-align:left;
+    padding:10px 16px;font-size:12px;border-bottom:1px solid var(--line)}
+  .mx td{padding:11px 16px;border-bottom:1px solid rgba(44,48,64,.5);vertical-align:top}
+  .mx tr:last-child td{border-bottom:none}
+  .pill{font-size:11px;padding:2px 9px;border-radius:999px;display:inline-block}
+  .pill.g{background:rgba(61,220,132,.12);color:var(--ok)}
+  .pill.w{background:rgba(255,194,75,.12);color:var(--warn)}
+  .pill.r{background:rgba(255,107,107,.12);color:var(--err)}
+  .mx td b{font-size:13px}
+
+  /* ---------- 原则 + 演进 ---------- */
+  .grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+  .pcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .pcard b{font-size:14.5px;display:block;margin-bottom:6px}
+  .pcard b i{font-style:normal;margin-right:6px}
+  .pcard p{font-size:12.5px;color:var(--muted)}
+  .evo{display:flex;gap:0;align-items:stretch;flex-wrap:wrap}
+  .evo .v{flex:1 1 280px;background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin:0 26px 12px 0;position:relative}
+  .evo .v::after{content:"→";position:absolute;right:-23px;top:50%;transform:translateY(-50%);
+    color:var(--muted);font-size:18px}
+  .evo .v:last-child::after{content:""}
+  .evo .now{border-color:rgba(76,125,255,.55);box-shadow:0 0 0 1px rgba(76,125,255,.25)}
+  .evo .v h4{font-size:14px;margin-bottom:6px}
+  .evo .v h4 span{font-size:11px;color:var(--muted);font-weight:400;margin-left:8px}
+  .evo .v ul{list-style:none}
+  .evo .v li{font-size:12px;color:var(--muted);padding:2px 0 2px 14px;position:relative}
+  .evo .v li::before{content:"·";position:absolute;left:2px;color:var(--accent)}
+  .evo .v li.on{color:var(--text)}
+
+  /* ---------- 接口契约 ---------- */
+  details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
+  summary{cursor:pointer;font-size:14px;color:var(--info)}
+  details .tbl{margin-top:12px}
+  code{font-family:Consolas,monospace;font-size:12px;color:var(--info);background:rgba(76,125,255,.08);
+    padding:1px 6px;border-radius:5px}
+
+  footer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;
+    color:var(--muted);font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  @media (max-width:900px){
+    .layer{grid-template-columns:1fr}
+    .layer .lab{border-right:none;border-bottom:1px solid var(--line)}
+    .mem{grid-template-columns:1fr}
+    .mem .arrow{transform:rotate(90deg);padding:6px 0}
+    .step{margin-right:12px}
+    .step::after{right:-13px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ 头部 ============ -->
+  <div class="hero">
+    <h1>嘴替 · <em>系统架构 v2</em></h1>
+    <p>一句话：钉钉没有发送前接口，就在系统层造一个「闸」——草稿抓取 → 本地 7B 改写 → 质检闭环 → 用户拍板。
+       五层单向依赖，横切配置与降级，话不出本机。</p>
+    <div class="tags">
+      <span class="tag g">全程本地 · 0 出网</span>
+      <span class="tag b">Ollama qwen2.5:7b</span>
+      <span class="tag">Python + Tkinter 单进程</span>
+      <span class="tag g">默认预览 · 发送闸门</span>
+      <span class="tag b">v2 质检闭环</span>
+    </div>
+  </div>
+
+  <!-- ============ 01 分层全景 ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">01</span><h2>分层全景 · 五层单向</h2></div>
+    <p class="sec-sub">上层只依赖下层，依赖方向唯一向下。交互层永远不直接碰模型层，中间隔着编排层与改写引擎——质检闭环全部收在引擎层内，编排层只拿结果。</p>
+
+    <div class="layer">
+      <div class="lab human"><b>L1 交互层</b><span>人只看见这里</span></div>
+      <div class="comps">
+        <span class="chip">钉钉输入框<small>宿主应用 · 系统级模拟</small></span>
+        <span class="chip hot">Alt+Z 全局热键<small>keyboard 库</small></span>
+        <span class="chip">悬浮窗面板<small>对象/语气/发送闸 开关</small></span>
+        <span class="chip">预览弹窗<small>发送 / Esc 弃 / 换一版</small></span>
+      </div>
+    </div>
+    <div class="flow-arrow">▼ 调用</div>
+    <div class="layer">
+      <div class="lab orch"><b>L2 编排层</b><span>run_pipeline</span></div>
+      <div class="comps">
+        <span class="chip">任务队列 + busy 锁<small>防热键连击并发</small></span>
+        <span class="chip">草稿抓取<small>选区优先 → 全选兜底 · 200 字保险丝</small></span>
+        <span class="chip">语气自动推荐<small>情绪词 × 对象关系 · 保守策略</small></span>
+        <span class="chip">发送控制<small>grace 1.2s + Esc 反悔 / 预览闸</small></span>
+      </div>
+    </div>
+    <div class="flow-arrow">▼ 调用</div>
+    <div class="layer">
+      <div class="lab eng"><b>L3 改写引擎</b><span>v2 重构核心</span></div>
+      <div class="comps">
+        <span class="chip core">Prompt 装配器<small>规则 + 模式分支 + few-shot 示例 ×3 + 对象分寸 + 记忆上下文</small></span>
+        <span class="chip new">质检器 lint<small>客服腔 / 脏字 / 说明性泄漏 / emoji 超量</small></span>
+        <span class="chip new">重试器<small>带违规原因重试 ×1</small></span>
+        <span class="chip">清洗器<small>剥前缀引号 · 卡 50 字</small></span>
+        <span class="chip new">结果缓存<small>(草稿,模式,对象,对话)</small></span>
+        <span class="chip">规则兜底<small>模型不可用时的最后防线</small></span>
+      </div>
+    </div>
+    <div class="flow-arrow">▼ 调用</div>
+    <div class="layer">
+      <div class="lab model"><b>L4 模型层</b><span>本地推理</span></div>
+      <div class="comps">
+        <span class="chip">Ollama API<small>localhost:11434</small></span>
+        <span class="chip hot">qwen2.5:7b<small>keep_alive 30m · num_ctx 4096 · stop 换行</small></span>
+        <span class="chip new">启动预热线程<small>后台拉模型进内存 · 免首次冷启动</small></span>
+      </div>
+    </div>
+    <div class="flow-arrow">▼ 只读</div>
+    <div class="layer">
+      <div class="lab mem2"><b>L5 记忆层</b><span>只读 · 生产在外部</span></div>
+      <div class="comps">
+        <span class="chip">context.db (SQLite)<small>详见 04 · 关系卡永久 / 近 1 月原文强记忆</small></span>
+        <span class="chip">build_context()<small>按对象拼上下文 → 注入 Prompt</small></span>
+      </div>
+    </div>
+
+    <div class="xcut">
+      <span class="t">横切 · 配置</span>
+      <span class="chip">config.json<small>热键 / 模式 / 发送键 / 温度 / keep_alive / num_ctx</small></span>
+      <span class="chip">DEFAULT_CONFIG 兜底<small>配置损坏也能起</small></span>
+      <span class="t" style="margin-left:12px">横切 · 降级</span>
+      <span class="chip">故障 → 策略矩阵<small>详见 05</small></span>
+    </div>
+  </section>
+
+  <!-- ============ 02 数据流 ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">02</span><h2>Alt+Z 一次按键的完整生命线</h2></div>
+    <p class="sec-sub">从按下热键到消息发出共 9 步，任何一步失败都不产生「半截动作」：要么完整发出，要么草稿原样保留。</p>
+
+    <div class="pipe">
+      <div class="step"><span class="n">STEP 1</span><b>热键入队</b><span>keyboard → job_q，busy 锁防连击</span></div>
+      <div class="step"><span class="n">STEP 2</span><b>备份剪贴板</b><span>原始剪贴板内容暂存，结束后还原</span></div>
+      <div class="step"><span class="n">STEP 3</span><b>抓草稿</b><span>Ctrl+C 选区 → 失败则全选兜底；&gt;200 字中止</span></div>
+      <div class="step"><span class="n">STEP 4</span><b>定语气</b><span>手动锁定 or 情绪词×对象自动推荐</span></div>
+      <div class="step qc"><span class="n">STEP 5</span><b>查缓存</b><span>同请求直接出结果，不重跑模型</span></div>
+      <div class="step qc"><span class="n">STEP 6</span><b>改写+质检</b><span>拼 Prompt → Ollama → 清洗 → lint（详见 03）</span></div>
+      <div class="step"><span class="n">STEP 7</span><b>写缓存</b><span>仅成功结果入缓存，上限 30 条</span></div>
+      <div class="step out"><span class="n">STEP 8</span><b>发送闸</b><span>预览窗拍板 / 自动发出 grace+Esc 反悔</span></div>
+      <div class="step out"><span class="n">STEP 9</span><b>还原现场</b><span>剪贴板还原，状态回报悬浮窗</span></div>
+    </div>
+    <div class="branch">
+      <span class="br">STEP 5 分支：<b>缓存命中</b> → 直接跳 STEP 8</span>
+      <span class="br g">STEP 8 分支：预览「换个说法」→ <b>拿原始草稿回 STEP 6</b>（温度 +0.25，不在上一版上链式改）</span>
+    </div>
+  </section>
+
+  <!-- ============ 03 质量闭环 ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">03</span><h2>质量闭环 · 7B 的短板用工程补</h2></div>
+    <p class="sec-sub">7B 小模型堆指令没用，堆示例才有效；示例管风格，质检管底线。v2 的思路：把「发现坏输出 → 带原因重教」做成模型外的工程闭环，而不是指望模型自己争气。</p>
+
+    <div class="loop">
+      <div class="node"><b>模型出稿</b><small>Ollama · stop 换行防多版本</small></div>
+      <div class="node"><b>清洗器</b><small>剥前缀/引号 · 卡 50 字</small></div>
+      <div class="node warn"><b>lint 质检</b><small>4 类违禁模式</small></div>
+      <div class="node ok"><b>过关 → 交付</b><small>写缓存 · 进发送闸</small></div>
+    </div>
+    <div class="loop" style="margin-top:12px;border-style:dashed">
+      <div class="node warn"><b>lint 不过</b><small>收集违规原因</small></div>
+      <div class="node"><b>带原因重试 ×1</b><small>「你上一版的问题：xxx」注入 system</small></div>
+      <div class="node warn"><b>二次 lint</b><small>同一把尺子</small></div>
+      <div class="node err"><b>仍不过 → 兜底</b><small>第一版去脏字保底 / 本地规则改写</small></div>
+    </div>
+    <div class="loop-notes">
+      <span class="br"><b>lint 四类违禁：</b>客服腔（收到~/感谢您的理解与支持/请您放心…）· 脏字残留 · 说明性文字泄漏（"以下是改写"）· emoji 超量</span>
+      <span class="br g"><b>为什么重试只做一次：</b>本地模型重试成本=翻倍延迟。一次重试覆盖 80%+ 的坏输出，两次以上说明草稿本身有歧义，该让人看而不是让机器猜。</span>
+    </div>
+  </section>
+
+  <!-- ============ 04 记忆库 ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">04</span><h2>记忆库 · 生产与消费分离</h2></div>
+    <p class="sec-sub">悬浮窗调不动钉钉（宿主认证隔离），所以记忆的生产整体外置给 QwenWork 侧，脚本只持有只读 SQLite。读写分离让最脆弱的一端（UI 进程）保持无状态。</p>
+
+    <div class="mem">
+      <div class="col">
+        <h3>生产侧（QwenWork）</h3>
+        <div class="sub">可挂定时任务 · 脚本不可达故外置</div>
+        <ul class="prod">
+          <li>dws chat +chat-messages<small>拉取钉钉消息导出</small></li>
+          <li>dumps/*.json<small>原始消息落盘</small></li>
+          <li>build_context_db.py<small>幂等落库 · 重跑不重不漏</small></li>
+        </ul>
+      </div>
+      <div class="arrow">→</div>
+      <div class="col">
+        <h3>context.db · 四张表</h3>
+        <div class="sub">SQLite · 单文件 · 随工具走</div>
+        <div class="tier p"><b>relationship_cards · 关系卡</b><span>永久 · 不随时间衰减 · 关键关系锚点</span></div>
+        <div class="tier s"><b>messages · 近期原文</b><span>强记忆 · 近 1 月 · 封顶 25 条</span></div>
+        <div class="tier w"><b>summaries · 摘要层</b><span>弱记忆 · 表结构已建 · 生成待接（v3）</span></div>
+        <div class="tier"><b>conversations · 会话注册</b><span>名字 / 类型 / 对象标签</span></div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="col">
+        <h3>消费侧（悬浮窗 · 只读）</h3>
+        <div class="sub">选中「对象」才注入 · 通用则零记忆</div>
+        <table class="tbl">
+          <tr><th>动作</th><th>效果</th></tr>
+          <tr><td>选常用对话</td><td>关系卡 + 近期原文 → 注入 Prompt</td></tr>
+          <tr><td>选角色</td><td>只带对象分寸规则，不带历史</td></tr>
+          <tr><td>通用</td><td>退回无上下文 · 库缺失同样降级</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 05 降级矩阵 ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">05</span><h2>降级矩阵 · 每种坏都有预案</h2></div>
+    <p class="sec-sub">架构图思维的关键一条：不画「一切正常」的图。每条依赖都问一句「它挂了用户看到什么」——答案必须是有感知、无事故。</p>
+    <table class="mx">
+      <tr><th style="width:22%">故障 / 异常</th><th style="width:44%">策略</th><th>用户感知</th></tr>
+      <tr><td><b>Ollama 未启动 / 超时</b></td><td>异常捕获 → 本地规则改写（删脏字、软化反问、收敛标点），绝不原样发出</td><td><span class="pill w">状态条提示</span>「模型不可用·已本地降级」</td></tr>
+      <tr><td><b>出稿含违禁内容</b></td><td>lint 带原因重试 ×1 → 仍不过取第一版去脏字保底 → 最后走规则兜底</td><td><span class="pill g">无感</span>只在预览窗看到干净成稿</td></tr>
+      <tr><td><b>记忆库缺失 / 表空</b></td><td>build_context 返回空串 → 退回无上下文通用改写</td><td><span class="pill g">无感</span>对象下拉只剩「通用」</td></tr>
+      <tr><td><b>抓取内容 &gt;200 字</b></td><td>判定误选（选到了聊天记录而非草稿）→ 直接中止，不动剪贴板</td><td><span class="pill r">明确报错</span>「抓到内容过长，已中止」</td></tr>
+      <tr><td><b>草稿为空 / 未选中</b></td><td>中止并报错，不进入改写</td><td><span class="pill r">明确报错</span>「没读到你写的字」</td></tr>
+      <tr><td><b>预览 30 秒无操作</b></td><td>不动作（v1 旧版会自动发出，v2 移除）</td><td><span class="pill g">一直等</span>拍板权完全在人</td></tr>
+      <tr><td><b>config.json 损坏</b></td><td>回退 DEFAULT_CONFIG 继续跑</td><td><span class="pill w">控制台提示</span>面板行为回默认</td></tr>
+    </table>
+  </section>
+
+  <!-- ============ 06 设计原则 + 演进 ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">06</span><h2>四条设计原则</h2></div>
+    <div class="grid4">
+      <div class="pcard"><b><i style="color:var(--ok)">🔒</i>话不出本机</b><p>唯一网络调用是 localhost:11434。改写、记忆、质检全部本地闭环，截图发出去的每句话都不经过第三方。</p></div>
+      <div class="pcard"><b><i style="color:var(--warn)">🚧</i>发送必须过闸</b><p>默认预览拍板；自动发出也留 1.2s grace + Esc 反悔。架构上「发出」是显式动作，不是改写的副作用。</p></div>
+      <div class="pcard"><b><i style="color:var(--info)">🤝</i>不侵入宿主</b><p>不钻钉钉内部、不 hook 进程，全部系统级模拟（剪贴板+按键）。代价是焦点与剪贴板的临时占用，用「还原现场」补偿。</p></div>
+      <div class="pcard"><b><i style="color:var(--accent2)">🎯</i>7B 现实主义</b><p>小模型不堆指令堆示例；风格靠 few-shot，底线靠外部质检闭环。工程补智能，而不是假装模型够聪明。</p></div>
+    </div>
+
+    <div class="sec-head" style="margin-top:44px"><span class="sec-no">07</span><h2>演进路线</h2></div>
+    <div class="evo">
+      <div class="v">
+        <h4>v1 单轮改写<span>已退役</span></h4>
+        <ul>
+          <li>纯指令 Prompt，输出风格随缘</li>
+          <li>换一版在上一版上链式改，意思漂移</li>
+          <li>num_ctx 缺省 2048，带记忆即截断</li>
+          <li>无预热，首次按键冷启动干等</li>
+        </ul>
+      </div>
+      <div class="v now">
+        <h4>v2 质检闭环<span>当前版本</span></h4>
+        <ul>
+          <li class="on">每档 3 条 few-shot 示例 + 招式识别</li>
+          <li class="on">lint → 带原因重试 → 规则兜底 三级防线</li>
+          <li class="on">keep_alive 常驻 + 启动预热 + 结果缓存</li>
+          <li class="on">换一版回归原始草稿，温度 +0.25 出变体</li>
+        </ul>
+      </div>
+      <div class="v">
+        <h4>v3 候选方向<span>待定</span></h4>
+        <ul>
+          <li>摘要层自动生成，强记忆跨月不丢</li>
+          <li>对象自动识别（免手选下拉）</li>
+          <li>流式预览，出稿即所见</li>
+          <li>算力允许时：三候选并行、人挑一</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 08 接口契约 ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">08</span><h2>接口契约</h2></div>
+    <p class="sec-sub">层与层之间只通过这些函数说话——评审时对签名即对架构。</p>
+    <details>
+      <summary>展开：核心函数签名与职责边界</summary>
+      <table class="tbl" style="font-size:12.5px">
+        <tr><th style="width:34%">签名</th><th>职责 · 所在层</th></tr>
+        <tr><td><code>run_pipeline()</code></td><td>九步生命线编排，不写业务规则 · L2</td></tr>
+        <tr><td><code>_rewrite(draft, variation=False) → (成稿, degraded)</code></td><td>改写主入口：缓存→模型→清洗→lint→重试→兜底，编排层只拿结果 · L3</td></tr>
+        <tr><td><code>_build_system(variation, lint_feedback) → str</code></td><td>Prompt 唯一装配点：规则+模式+示例+分寸+记忆 · L3</td></tr>
+        <tr><td><code>_lint(t) → [违规原因…]</code></td><td>质检尺子，返回空即过关；重试与兜底都认它 · L3</td></tr>
+        <tr><td><code>_clean(text) → str</code></td><td>格式清洗，不做内容判断 · L3</td></tr>
+        <tr><td><code>_rule_fallback(text) → str</code></td><td>无模型最后防线 · L3</td></tr>
+        <tr><td><code>_call_ollama(prompt, system, temperature) → str</code></td><td>模型层唯一出口，keep_alive/num_ctx/stop 收敛在此 · L4</td></tr>
+        <tr><td><code>_warm_model()</code></td><td>启动预热，后台线程 · L4</td></tr>
+        <tr><td><code>build_context(conv) → str</code></td><td>记忆拼装，conv 无效返回空串 · L5</td></tr>
+        <tr><td><code>suggest_mode(draft, recipient) → mode</code></td><td>语气推荐，保守策略 · L2</td></tr>
+      </table>
+    </details>
+  </section>
+
+  <footer>
+    <span>嘴替 · 系统架构 v2 · 2026-09-18</span>
+    <span>配色令牌与产品 UI 同源（#4C7DFF / #8A5CFF / 深色卡片系）</span>
+  </footer>
+</div>
+</body>
+</html>

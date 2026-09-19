@@ -1,0 +1,19 @@
+{
+  "ollama_host": "http://localhost:11434",
+  "model": "qwen2.5:7b",
+  "hotkey": "alt+z",
+  "mode": "polish",
+  "recipient": "none",
+  "conversation": "通用",
+  "auto_enter": false,
+  "send_key": "enter",
+  "temperature": 0.5,
+  "num_predict": 160,
+  "keep_alive": "30m",
+  "num_ctx": 4096,
+  "req_timeout": 60,
+  "key_pause": 0.12,
+  "grace_seconds": 1.2,
+  "start_expanded": false,
+  "auto_mode": true
+}
