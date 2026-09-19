@@ -68,6 +68,8 @@ DEFAULT_CONFIG = {
     "num_predict": 160,         # 50 字成稿用不了 300；stop 换行也防多版本输出
     "keep_alive": "30m",        # 模型常驻内存，避免每次 Alt+Z 冷启动干等
     "num_ctx": 4096,            # Ollama 默认 2048，带记忆库上下文会爆
+    "mimic_me": True,           # 自我卡：从库里你的历史消息提炼口吻，让成稿像你本人
+    "my_name": "",              # 你在钉钉里的名字；空=自动检测（不准就在这里写死）
     "req_timeout": 60,
     "key_pause": 0.12,
     "grace_seconds": 1.2,       # 预览关时的反悔缓冲；按 Esc 取消发送
@@ -296,6 +298,7 @@ class ZuitiApp:
         self.recipient = self._derive_recipient(self.conv)
         self.auto_mode = bool(self.cfg.get("auto_mode", True))
         self.auto_enter = bool(self.cfg.get("auto_enter", False))
+        self.mimic_me = bool(self.cfg.get("mimic_me", True))
         self._cancel = threading.Event()
         self._preview_reply = None  # 预览窗口结果
         self._busy = False          # 处理中加锁，防并发
@@ -465,6 +468,10 @@ class ZuitiApp:
         self.menu = tk.Menu(r, tearoff=0)
         self.menu.add_command(label="展开 / 收起", command=self._toggle_expand)
         self.menu.add_command(label="自动语气（点此切换开/关）", command=self.toggle_auto_mode)
+        if HAS_CTX:
+            self.menu.add_command(label="", command=self.toggle_mimic)
+            self._mimic_mi = self.menu.index("end")
+            self._refresh_mimic()
         self.menu.add_command(label="退出", command=self._quit)
         r.bind("<Button-3>", lambda e: self.menu.tk_popup(e.x_root, e.y_root))
 
@@ -606,11 +613,25 @@ class ZuitiApp:
         self._refresh_auto_mode()
         self._save_cfg()
 
+    def _refresh_mimic(self):
+        try:
+            self.menu.entryconfig(
+                self._mimic_mi,
+                label=f"模仿我的口吻：{'开' if self.mimic_me else '关'}（自我卡）")
+        except Exception:
+            pass
+
+    def toggle_mimic(self):
+        self.mimic_me = not self.mimic_me
+        self._refresh_mimic()
+        self._save_cfg()
+
     def _save_cfg(self):
         try:
             data = dict(self.cfg)
             data.update({"mode": self.mode, "conversation": self.conv,
-                         "auto_enter": self.auto_enter, "auto_mode": self.auto_mode})
+                         "auto_enter": self.auto_enter, "auto_mode": self.auto_mode,
+                         "mimic_me": self.mimic_me})
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception:
@@ -757,6 +778,13 @@ class ZuitiApp:
         if self._ctxblock:
             s += (" 下面给了你与对方的对话上下文，请结合它保持连贯，别重复对方已知信息，"
                   "也别编造上下文里没有的事实。")
+        if self.mimic_me and HAS_CTX:
+            excl = list(self._CURSE) + list(self._OUT_BANNED)
+            card = ctxmod.style_card(self.cfg.get("my_name") or None, exclude=excl)
+            if card:
+                s += ("\n" + card +
+                      "\n成稿的称呼、句长、语气词都要向上面这个口吻靠，像用户本人发的；"
+                      "但硬规则（禁词、不承诺、只输出成稿）优先于风格。")
         if variation:
             s += "\n这次换个角度：措辞和思路都要跟常见改法不同，但立场和事实不变。"
         if lint_feedback:
@@ -780,6 +808,48 @@ class ZuitiApp:
             bad.append("太短，没信息量")
         return bad
 
+    # ---------- 原意保持度校验：lint 管格式，这里管事实 ----------
+    _REFUSE_MARKS = ["做不了", "干不了", "加不了", "办不了", "去不了", "来不了", "帮不了",
+                     "接受不了", "不接", "不做", "不批", "不同意", "拒绝", "无法满足"]
+    _AGREE_OUT = ["没问题", "可以安排", "马上安排", "立刻安排", "安排上", "这就去",
+                  "包在我身上", "交给我", "保证完成"]
+    _AGREE_IN = ["好的", "没问题", "同意", "就这么办", "行吧", "安排上", "OK", "ok"]
+    _REFUSE_OUT = ["做不了", "办不了", "干不了", "不行", "拒绝", "无法", "没法", "不接受", "帮不了"]
+    _TIME_DAY = ("今天", "明天", "后天", "本周", "这周", "下周", "上周",
+                 "周一", "周二", "周三", "周四", "周五", "周六", "周日", "周末",
+                 "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+    _TIME_PART = ("上午", "下午", "中午", "晚上")
+
+    def _fact_check(self, draft, out):
+        """查成稿有没有把事实改了：拒绝变答应、数字凭空出现、时间口径漂移。
+        返回违规原因列表（措辞直接喂给重试器）；丢弃细节不算违规。"""
+        bad = []
+        d, o = draft or "", out or ""
+        if not d or not o:
+            return bad
+        if any(w in d for w in self._REFUSE_MARKS) and any(w in o for w in self._AGREE_OUT):
+            bad.append("原话是拒绝，成稿变成了答应")
+        if any(w in d for w in self._AGREE_IN) and any(w in o for w in self._REFUSE_OUT):
+            bad.append("原话是答应，成稿变成了拒绝")
+        d_nums = set(re.findall(r"\d+(?:\.\d+)?", d))
+        for num in re.findall(r"\d+(?:\.\d+)?", o):
+            if num not in d_nums:
+                bad.append(f"成稿出现了原话没有的数字{num}，可能构成新承诺")
+                break
+        d_day = {t for t in self._TIME_DAY if t in d}
+        o_day = {t for t in self._TIME_DAY if t in o}
+        if d_day and o_day - d_day:
+            bad.append("时间口径变了：" + "、".join(sorted(o_day - d_day)))
+        d_part = {t for t in self._TIME_PART if t in d}
+        o_part = {t for t in self._TIME_PART if t in o}
+        if d_part and o_part - d_part:
+            bad.append("时间段变了：" + "、".join(sorted(o_part - d_part)))
+        return bad
+
+    def _violations(self, draft, t):
+        """成稿总质检 = 格式 lint + 原意保持度。"""
+        return self._lint(t) + self._fact_check(draft, t)
+
     def _rewrite(self, draft, variation=False):
         """改写主入口：缓存 → 模型 → 清洗 → 质检，不合格带原因重试一次。
         返回 (成稿, degraded)；模型不可用时走本地规则降级。"""
@@ -794,7 +864,7 @@ class ZuitiApp:
             out = self._clean(self._call_ollama(user_prompt, self._build_system(variation=variation), temp))
         except Exception:
             return self._rule_fallback(draft), True   # 模型不可用 → 本地规则降级
-        reasons = self._lint(out)
+        reasons = self._violations(draft, out)
         if reasons:
             try:
                 out2 = self._clean(self._call_ollama(
@@ -803,12 +873,12 @@ class ZuitiApp:
                     temp))
             except Exception:
                 out2 = ""
-            if out2 and not self._lint(out2):
+            if out2 and not self._violations(draft, out2):
                 out = out2
-            elif out and not any(w in out.lower() for w in self._CURSE):
-                pass                                  # 两版都不干净 → 用第一版兜底（已清洗）
+            elif out and not any(w in out.lower() for w in self._CURSE) and not self._fact_check(draft, out):
+                pass             # 格式小毛病可容忍：第一版已清洗且没改事实
             else:
-                out = self._rule_fallback(draft)
+                out = self._rule_fallback(draft)   # 事实被改 → 宁可退回保守规则版
         if not variation:
             if len(self._cache) > 30:
                 self._cache.clear()

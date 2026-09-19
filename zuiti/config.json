@@ -11,6 +11,8 @@
   "num_predict": 160,
   "keep_alive": "30m",
   "num_ctx": 4096,
+  "mimic_me": true,
+  "my_name": "大宇",
   "req_timeout": 60,
   "key_pause": 0.12,
   "grace_seconds": 1.2,
