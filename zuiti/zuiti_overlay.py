@@ -83,7 +83,6 @@ MODE_LABELS = {
     "polish": "高情商",
     "firm": "强硬",
     "drama": "损一点",
-    "reply": "帮我回",
 }
 
 # 悬浮窗只用“改写你要发的话”这一类模式；reply(帮我回)走聊天里的 zuiti 技能
@@ -93,7 +92,6 @@ MODE_DESC = {
     "polish": "把你想说的话，改得体面、有分寸，截图也不怕。",
     "firm": "立场更硬，先把边界钉死，但不失礼。",
     "drama": "更有梗、更损一点，却还是发得出去的体面话。",
-    "reply": "抓对方发来的那句，替你生成一条能直接发的回复。",
 }
 
 # 对方是谁 —— 嘴替的灵魂：同样一句改写，对老板和对同事分寸完全不同
@@ -199,9 +197,13 @@ def _rgb(h):
 
 
 # 根据草稿情绪 + 对方关系，自动推荐语气档（保守：只对平级/未知的强火气推“强硬”，其余走高情商）
-_CURSE_WORDS = ["傻", "滚", "卧槽", "我操", "我草", "艹", "尼玛", "妈的", "特么",
-                "有病", "废物", "垃圾", "智障", "白痴", "去死", "操", "fuck", "shit",
-                "离谱", "疯了", "画饼", "甩锅", "背锅", "装死", "什么玩意", "服了"]
+# 前半是脏字/火气词：lint 查残留、规则兜底照这个洗；后半（离谱/画饼…）是纯火气信号，只参与推档。
+# 注意补拼音简写：草稿里“他妈”绝大多数打成 tm，漏一个，降级时脏字就原样发出去了。
+_CURSE_WORDS = ["傻", "傻逼", "煞笔", "sb", "滚", "滚蛋", "卧槽", "我操", "我草", "艹",
+               "尼玛", "他妈", "他妈的", "妈的", "tm", "tmd", "特么", "脑子", "有病",
+               "废物", "垃圾", "智障", "白痴", "去死", "操", "fuck", "shit",
+               "放屁", "狗东西", "狗屎", "贱人", "犯贱",
+               "离谱", "疯了", "画饼", "甩锅", "背锅", "装死", "什么玩意", "服了"]
 
 
 def suggest_mode(draft, recipient):
@@ -303,7 +305,7 @@ class ZuitiApp:
         self.auto_enter = bool(self.cfg.get("auto_enter", False))
         self.mimic_me = bool(self.cfg.get("mimic_me", True))
         self._cancel = threading.Event()
-        self._preview_reply = None  # 预览窗口结果
+        self._preview_out = None    # 预览窗口结果
         self._busy = False          # 处理中加锁，防并发
         self.job_q = queue.Queue()
         self._cache = {}            # (草稿,模式,对象,对话)→成稿，防双击热键重复等
@@ -742,7 +744,11 @@ class ZuitiApp:
         self._status("读你写的…", C_WARN, state="work")
         draft = self._grab_selection()
         if not draft.strip():
-            self._status("没读到你写的字：先在输入框里全选", C_ERR, state="err")
+            who = self._fg_title()
+            if who:
+                self._status(f"没读到字：焦点在「{who[:12]}」，先点进钉钉输入框", C_ERR, state="err")
+            else:
+                self._status("没读到你写的字：先在输入框里全选", C_ERR, state="err")
             return
         if len(draft) > 200:
             self._status("抓到内容过长，可能选错了，已中止", C_ERR, state="err")
@@ -835,6 +841,8 @@ class ZuitiApp:
             bad.append("emoji超量")
         if len(t) < 4:
             bad.append("太短，没信息量")
+        if len(t) > 50:
+            bad.append("成稿超过50字，要砍到50字以内")
         return bad
 
     # ---------- 原意保持度校验：lint 管格式，这里管事实 ----------
@@ -901,7 +909,7 @@ class ZuitiApp:
         except Exception:
             if on_note:
                 on_note("模型不可用 → 已换本地保守版")
-            return self._rule_fallback(draft), True   # 模型不可用 → 本地规则降级
+            return self._trim_len(self._rule_fallback(draft)), True   # 模型不可用 → 本地规则降级
         reasons = self._violations(draft, out)
         if reasons:
             if on_note:
@@ -928,6 +936,10 @@ class ZuitiApp:
                     on_note("⚠ 事实被改 → 已换本地保守版，原意优先")
         elif on_note:
             on_note("✓ 通过")
+        if len(out) > 50:      # 重写两次仍超长，或兜底稿本身就长：兜底截断，硬规则必须成立
+            out = self._trim_len(out)
+            if on_note:
+                on_note("⚠ 还是超长 → 已截到50字内")
         if not variation:
             if len(self._cache) > 30:
                 self._cache.clear()
@@ -1114,31 +1126,42 @@ class ZuitiApp:
         # 连续 emoji 只留一个
         t = re.sub(r"([\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F])\1+", r"\1", t)
         t = " ".join(t.split())
-        if len(t) > 50:
-            cut = t[:50]
-            for p in ("。", "！", "？", "，", "、", " ", "；", ";"):
-                idx = cut.rfind(p)
-                if idx >= 20:
-                    cut = cut[:idx + 1]
-                    break
-            t = cut.strip("，、； ")
         return t
 
+    def _trim_len(self, t):
+        """超长的最后一招：按标点断在 50 字内。
+        缩短的正当流程是 _lint 报“超过50字”→ 带原因重写；这里只保证硬规则永远成立
+        （重写两次仍超长、或本地规则兜底稿本身就长的情况）。"""
+        if len(t) <= 50:
+            return t
+        cut = t[:50]
+        for p in ("。", "！", "？", "，", "、", " ", "；", ";"):
+            idx = cut.rfind(p)
+            if idx >= 20:
+                cut = cut[:idx + 1]
+                break
+        return cut.strip("，、； ")
+
     # 模型不可用时的本地规则降级：删脏字、软化反问、收敛感叹号，绝不原样发
-    _CURSE = ["傻逼", "傻B", "煞笔", "沙雕", "滚蛋", "滚", "卧槽", "我操", "我草", "艹",
-              "尼玛", "你妈", "妈的", "特么", "有病", "脑子有", "废物", "垃圾", "智障",
-              "白痴", "去死", "操你", "fuck", "shit", "bm"]
+    # 与模块级 _CURSE_WORDS 分工：那个是"草稿里的火气"（参与推档），这个是"成稿里不许有"（lint + 兜底）。
+    # 坑：lint 会把成稿转小写再比，所以这里别放大写变体（"傻B"比不中"傻b"）；
+    # 拼音简写（tm/sb/tmd）必须收——草稿里"他妈"九成打成 tm，漏一个兜底就把脏字原样发出去了。
+    _CURSE = ["傻逼", "傻b", "煞笔", "沙雕", "sb", "滚蛋", "滚", "卧槽", "我操", "我草",
+              "艹", "尼玛", "他妈的", "他妈", "你妈", "妈的", "tm", "tmd", "特么", "脑子",
+              "有病", "废物", "垃圾", "智障", "白痴", "去死", "操", "操你", "fuck", "shit",
+              "放屁", "狗东西", "狗屎", "贱人", "犯贱"]
 
     def _rule_fallback(self, text):
         t = text or ""
-        for w in self._CURSE:
-            t = t.replace(w, "")
+        # 长的先删："他妈的"先于"他妈"，不然"他妈的又甩锅"会剩个"的又甩锅"
+        for w in sorted(self._CURSE, key=len, reverse=True):
+            t = re.sub(re.escape(w), "", t, flags=re.IGNORECASE)   # 忽略大小写：傻B/傻b 一起洗
         t = re.sub(r"到底(是不是|会不会|有没有)[^。！？!?]*[？?]", "这块我需要再确认下。", t)
         t = re.sub(r"(你|您)(是不是|怎么|为什么)[^。！？!?]*[？?]", "这里我有点没对齐，稍后跟你确认。", t)
         t = t.replace("！", "。").replace("!", "。").replace("？？", "？")
         t = re.sub(r"[。]{2,}", "。", t)
         t = " ".join(t.split()).strip()
-        if not t:
+        if len(t) < 4:      # 删到只剩残片（"傻B玩意"→"玩意"）：给中性的，别发碎片
             t = "这块我确认后答复你。"
         return t
 
@@ -1199,6 +1222,20 @@ class ZuitiApp:
             self._fg_hwnd = ctypes.windll.user32.GetForegroundWindow()
         except Exception:
             self._fg_hwnd = 0
+
+    def _fg_title(self):
+        """当前前台窗口的标题。抓不到字时，报“焦点在哪个窗口”比让人瞎猜强——
+        演示现场 90% 的失败是热键按下去时前台根本不是钉钉。"""
+        try:
+            import ctypes
+            h = getattr(self, "_fg_hwnd", 0)
+            if not h:
+                return ""
+            buf = ctypes.create_unicode_buffer(256)
+            ctypes.windll.user32.GetWindowTextW(h, buf, 256)
+            return buf.value.strip()
+        except Exception:
+            return ""
 
     def _focus_back(self):
         try:
@@ -1405,7 +1442,8 @@ class ZuitiApp:
             built.set()
 
         self._set(build)
-        if not built.wait(3.0):       # 窗口没建出来（极少见）：当放弃处理，别空跑改写
+        if not built.wait(8.0):       # 窗口没建出来（投影仪/资源紧张下 Tk 会慢）：当放弃处理，别空跑改写
+            self._status("预览窗没出来，这轮不发；点一下悬浮条重试", C_ERR, state="err")
             return None, ""
         threading.Thread(target=worker, args=(False,), daemon=True).start()
         ev.wait()
@@ -1413,10 +1451,6 @@ class ZuitiApp:
 
     def _cancel_send(self):
         self._cancel.set()
-
-    def _send_now(self):
-        # 预览关时按 Enter 立即发出，跳过 grace
-        pass
 
     def run(self):
         self.root.mainloop()
