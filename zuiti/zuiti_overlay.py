@@ -1292,13 +1292,7 @@ class ZuitiApp:
                 text="质检 换个说法，重新改写…", fg=C_INFO)))
             threading.Thread(target=worker, args=(True,), daemon=True).start()
 
-        def build():
-            win = tk.Toplevel(self.root)
-            win.attributes("-topmost", True)
-            win.title("嘴替 · 预览")
-            win.configure(bg=C_CARD)
-            win.geometry("400x300")
-            # ① 说明行
+        def head_text():
             mode_lb = MODE_LABELS.get(self.mode, self.mode)
             if getattr(self, "_autopush", False):
                 mode_lb += "（检测到火气，自动推档）"
@@ -1306,9 +1300,65 @@ class ZuitiApp:
             tag = RECIPIENTS.get(self.recipient, "")
             if tag and tag != "不指定":
                 who += "·" + tag
-            head = f"{who} ｜ 语气 {mode_lb} ｜ 识别：对方{self._guess_tactic(draft)}"
-            tk.Label(win, text=head, bg=C_CARD, fg=C_MUTED, wraplength=372, justify="left",
-                     anchor="w", font=self._font(9)).pack(fill="x", padx=14, pady=(12, 4))
+            return f"{who} ｜ 语气 {mode_lb} ｜ 识别：对方{self._guess_tactic(draft)}"
+
+        def switch_mode(key):
+            # 预览窗内换档：拿原始草稿按新档重改（交互参考 openai-translator 卡内模式切换）
+            if state["busy"] or state["closed"] or key == self.mode:
+                return
+            self.set_mode(key)               # 主面板同步 + 落 config；手动选过后不再自动推档
+            self._autopush = False
+            state["busy"] = True
+
+            def pre():
+                h = ui.get("head")
+                if h:
+                    h.configure(text=head_text())
+                for k, b in ui.get("mode_btns", {}).items():
+                    b.configure(bg=C_ACCENT if k == key else C_CARD2,
+                                fg="#FFFFFF" if k == key else C_TEXT)
+                set_text("")
+                ui["verdict"].configure(
+                    text=f"质检 已切「{MODE_LABELS.get(key, key)}」，拿原始草稿重改…", fg=C_INFO)
+            safe(pre)
+            threading.Thread(target=worker, args=(False,), daemon=True).start()
+
+        def copy_out():
+            # 结果卡复制（参考 pot/openai-translator 的卡上复制键）：拿走文字，不发送
+            txt = ui.get("txt")
+            if state["busy"] or state["closed"] or not txt:
+                return
+            s = txt.get("1.0", "end-1c").strip() or state["last"]
+            if not s:
+                return
+            self.root.clipboard_clear()
+            self.root.clipboard_append(s)
+            safe(lambda: ui["verdict"].configure(text="✓ 已复制到剪贴板（未发送）", fg=C_OK))
+
+        def build():
+            win = tk.Toplevel(self.root)
+            win.attributes("-topmost", True)
+            win.title("嘴替 · 预览")
+            win.configure(bg=C_CARD)
+            win.geometry("400x345")
+            # ① 说明行
+            head = tk.Label(win, text=head_text(), bg=C_CARD, fg=C_MUTED, wraplength=372,
+                            justify="left", anchor="w", font=self._font(9))
+            head.pack(fill="x", padx=14, pady=(12, 4))
+            ui["head"] = head
+            # 语气档即时切换：当前档高亮，点了拿原始草稿按新档重改
+            mrow = tk.Frame(win, bg=C_CARD)
+            mrow.pack(fill="x", padx=14, pady=(0, 4))
+            tk.Label(mrow, text="换档", bg=C_CARD, fg=C_MUTED, font=self._font(8)).pack(side="left")
+            ui["mode_btns"] = {}
+            for key in BAR_MODES:
+                sel = key == self.mode
+                b = tk.Label(mrow, text=MODE_LABELS.get(key, key), cursor="hand2",
+                             font=self._font(9), bg=C_ACCENT if sel else C_CARD2,
+                             fg="#FFFFFF" if sel else C_TEXT, padx=10, pady=3)
+                b.pack(side="left", padx=4)
+                b.bind("<Button-1>", lambda e, k=key: switch_mode(k))
+                ui["mode_btns"][key] = b
             # ② 流式成稿框（出完字可编辑）
             txt = tk.Text(win, height=5, wrap="word", font=self._font(11),
                           bg=C_CARD2, fg=C_TEXT, insertbackground=C_TEXT,
@@ -1327,7 +1377,7 @@ class ZuitiApp:
                                      wraplength=372, justify="left", anchor="w",
                                      font=self._font(9))
             ui["verdict"].pack(fill="x", padx=14)
-            tk.Label(win, text="框里可直接改字，Enter 发的就是改过的版本",
+            tk.Label(win, text="框里可直接改字，Enter 发的就是改过的版本；Alt+1/2/3 快速换档",
                      bg=C_CARD, fg=C_MUTED, font=self._font(8)).pack(fill="x", padx=14)
             fr = tk.Frame(win, bg=C_CARD)
             fr.pack(pady=8)
@@ -1343,9 +1393,12 @@ class ZuitiApp:
             flat(fr, "发送  Enter", lambda: done(True), accent=True)
             flat(fr, "算了  Esc", lambda: done(False))
             flat(fr, "换个说法  Alt+R", lambda: vary())
+            flat(fr, "复制", copy_out)
             win.bind("<Return>", lambda e: done(True))
             win.bind("<Escape>", lambda e: done(False))
             win.bind("<Alt-r>", lambda e: vary())
+            for i, key in enumerate(BAR_MODES, 1):
+                win.bind(f"<Alt-Key-{i}>", lambda e, k=key: switch_mode(k))
             win.protocol("WM_DELETE_WINDOW", lambda: done(False))
             # 不设超时自动发：预览模式的意义就是让人拍板，不选就一直等
             ui["win"] = win
