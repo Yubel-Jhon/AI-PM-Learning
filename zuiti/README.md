@@ -6,8 +6,14 @@
 
 1. **Python 3.8+**（已检测到 3.12）。
 2. 装依赖：双击 `安装依赖.bat`，或 `pip install -r requirements.txt`。
-3. 装并跑 [Ollama](https://ollama.com)：`ollama pull qwen2.5:7b`（或换模型后改 `config.json` 的 `model`）。
-   确认 `http://localhost:11434` 能访问。
+3. **引擎二选一**（`config.json` 的 `provider`，默认 `api`）：
+   - **api 档（质量档，默认）**：云上大模型改写，效果最好。把 key 写进 `local_settings.json`
+     （`{"api_key": "sk-…"}`，此文件已 gitignore，也可用环境变量 `DASHSCOPE_API_KEY`）。
+     注意：草稿和上下文会发到云端 API——介意就切 ollama 档。
+   - **ollama 档（隐私档）**：装并跑 [Ollama](https://ollama.com)：`ollama pull qwen2.5:7b`
+     （或换模型后改 `config.json` 的 `model`），确认 `http://localhost:11434` 能访问。
+     草稿和记忆库全程不出这台电脑——演示「全程本地」卖点时用这档。
+   - api 档请求失败会自动回退本地模型，两者都不行才走规则兜底。
 
 ## 启动
 
@@ -54,7 +60,8 @@
 - 需要你的光标焦点在钉钉输入框；脚本运行瞬间别切窗口。
 - 剪贴板会被临时占用，结束会还原，但期间别手动复制。
 - **默认自动回车发出**：万一改写不满意也已经发出去了。想稳一点，点悬浮条上"自动发出:开"切成"关(预览)"，
-  会弹窗让你 Enter 发送 / Esc 放弃 / Alt+R 换一版。
+  会弹预览窗：改写**边出字边显示**（流式），顶部说明行交代对象/语气档/对方疑似招式，质检过程当场直播；
+  出完字**框里可直接改**，Enter 发的是改过的版本 / Esc 放弃 / Alt+R 拿原始草稿换一版。
 - 若你的钉钉是"Ctrl+Enter 发送"，把 `config.json` 的 `send_key` 改成 `ctrl+enter`。
 - `grace_seconds` 是自动发出前的反悔缓冲秒数，期间按 Esc 可取消。
 
@@ -62,8 +69,11 @@
 
 | 键 | 含义 |
 |---|---|
-| ollama_host | Ollama 地址 |
-| model | 模型名，需与 `ollama list` 一致 |
+| provider | 引擎：`api`（云上大模型，默认）/ `ollama`（本地隐私档） |
+| api_base | OpenAI 兼容端点，默认 DashScope；GLM 等兼容端点换这里即可 |
+| api_model | api 档模型名，默认 `qwen3.8-flash`（qwen3 系已自动关思考；嫌慢/不稳换 `qwen-plus`）|
+| ollama_host | Ollama 地址（ollama 档用） |
+| model | 本地模型名，需与 `ollama list` 一致（ollama 档用） |
 | hotkey | 全局热键，`keyboard` 库格式，如 `alt+z` / `ctrl+alt+space` |
 | mode | 默认模式 polish/firm/drama/reply |
 | auto_enter | true 自动发出；false 弹预览 |
@@ -84,6 +94,35 @@
   - 任一层不过 → 自动带违规原因重试一次。
 - **自我卡（模仿你的语气）**：从 `context.db` 里你发过的消息提炼说话风格（句长/称呼/语气词/emoji 习惯）+ 5 条原话样本注入提示词，成稿模仿你本人的口吻。改写硬规则优先于风格。库缺你的消息或消息少于 8 条时自动不注入。
 - 预览模式的“换个说法”**拿原始草稿重改**（之前是在上一版上继续改，意思会越漂越远），且预览窗**不再 30 秒不选就自动发出**——不选就一直等。
+- **预览窗三件套（v3）**：①说明行——对象/语气档（自动推档会交代“检测到火气”）/对方疑似招式识别（本地规则推断，标“疑似”）；②流式改写——边出字边进框，质检不过当场清框重写，全程看得见；③可编辑成稿——Enter 发的是框里当前文字（先改再发），发送前自动把焦点还给 Alt+Z 时的窗口，不会粘错地方。
+
+## 演示模式（真库不上台）
+
+现场展示、录屏或把截图发给别人时，用脱敏演示库，**别用真库**（`context.db` 是真实钉钉记录，下拉里会出现真名真群名）。
+
+1. `python build_demo_db.py` —— 生成 `demo_context.db`：三个虚构对象（张总/王姐/项目推进群），每个带一组脚本化对话记忆 + 人设卡；"大宇"的历史消息同时喂自我卡。重跑即重建，幂等。
+2. 双击 **`启动嘴替-演示.bat`** 启动 —— 它只做一件事：设环境变量 `ZUITI_DB=demo_context.db` 再拉起脚本。悬浮窗右侧菜单「重载上下文库」后，对象下拉里只会出现张总/王姐/项目推进群。
+3. 配套 **`演示剧本.md`**：开演前检查清单、五个排练场景（含每条该说的讲解词）、翻车预案。
+
+原理：`context.py` 里 `DB = os.environ.get("ZUITI_DB") or .../context.db`，演示库与真库物理分文件，不改一行代码切换；真库文件在本机原样保留。
+
+## 路径与自检（出了问题先跑这个）
+
+| 东西 | 定义在哪 | 默认 |
+|---|---|---|
+| API key（api 档引擎） | `local_settings.json`（脚本同目录，gitignore 排除）或环境变量 `DASHSCOPE_API_KEY` | 无 |
+| 记忆库 context.db | `context.py` 的 `DB` | 脚本同目录；环境变量 `ZUITI_DB` 可覆盖 |
+| dumps 钉钉导出 | `build_context_db.py` 的 `DUMPS` | 脚本同目录 dumps/ |
+| 演示库 | `build_demo_db.py` | 脚本同目录 demo_context.db |
+| 人物卡输出 | `persona_export.py` | 库同目录 persona_cards/ |
+| MBTI 钦点记录 | `persona_export.py --set-mbti` | persona_cards/_mbti_override.json |
+
+读库失败**不再静默**：控制台会打 `[context] xxx 失败: 原因`，悬浮窗就绪状态栏会写
+"引擎 xxx · 记忆库 X会话/X条"（没建库会明说"只走通用模式"，没配 key 会明说"回退本地"）。
+
+**双击 `检查环境.bat`**（或 `python check_env.py`）一次看全：生效库是哪个、每个会话多少条、
+自我卡认没认对人、dumps 缺不缺导出、config 生效值、Ollama 在不在线、人物卡落没落。
+每一项 ✗ 后面都跟着"修：xxx"。
 
 ## 停止
 

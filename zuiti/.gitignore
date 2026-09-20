@@ -3,3 +3,6 @@ dumps/
 context.db
 __pycache__/
 *.pyc
+
+# API key 只放本地（api 档引擎）
+local_settings.json

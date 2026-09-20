@@ -8,12 +8,22 @@ context.py —— 悬浮窗只读本地记忆库 context.db，按分层策略拼
 """
 import os
 import re
+import sys
 import time
 import sqlite3
 import datetime
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DB = os.path.join(BASE, "context.db")
+# 演示模式：设置环境变量 ZUITI_DB 可切到独立演示库（真库不上台）
+DB = os.environ.get("ZUITI_DB") or os.path.join(BASE, "context.db")
+
+LAST_ERROR = ""    # 最近一次读库失败原因（原先是静默吞掉，排障抓瞎）
+
+
+def _err(where, e):
+    global LAST_ERROR
+    LAST_ERROR = f"{where}: {e}"
+    print(f"[context] {where} 失败: {e}", file=sys.stderr)
 
 RECENT_DAYS = 30      # 强记忆窗口：最近 1 个月原文
 RECENT_CAP = 25       # 近期原文封顶条数，防爆上下文
@@ -38,8 +48,32 @@ def available():
         n = c.execute("SELECT COUNT(*) FROM conversations").fetchone()[0]
         c.close()
         return n > 0
-    except Exception:
+    except Exception as e:
+        _err("available", e)
         return False
+
+
+def db_stats():
+    """库概况（会话/消息/关系卡/摘要条数 + 每会话计数），状态栏和自检都用它。
+    表缺失记 -1，打不开记 LAST_ERROR。"""
+    out = {"db": DB, "exists": os.path.exists(DB), "convs": 0, "msgs": 0,
+           "cards": 0, "summaries": 0, "per_conv": []}
+    if not out["exists"]:
+        return out
+    try:
+        c = _conn()
+        for key, tbl in (("convs", "conversations"), ("msgs", "messages"),
+                         ("cards", "relationship_cards"), ("summaries", "summaries")):
+            try:
+                out[key] = c.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
+            except Exception:
+                out[key] = -1                    # 老库没这张表
+        out["per_conv"] = c.execute(
+            "SELECT conv_name, COUNT(*) FROM messages GROUP BY conv_name ORDER BY 2 DESC").fetchall()
+        c.close()
+    except Exception as e:
+        _err("db_stats", e)
+    return out
 
 
 def list_conversations():
@@ -51,7 +85,8 @@ def list_conversations():
         rows = c.execute("SELECT name, recipient_tag FROM conversations ORDER BY name").fetchall()
         c.close()
         return rows
-    except Exception:
+    except Exception as e:
+        _err("list_conversations", e)
         return []
 
 
@@ -61,33 +96,39 @@ def tag_of(name):
         r = c.execute("SELECT recipient_tag FROM conversations WHERE name=?", (name,)).fetchone()
         c.close()
         return r[0] if r else "none"
-    except Exception:
+    except Exception as e:
+        _err("tag_of", e)
         return "none"
 
 
 def build_context(conv_name, recent_days=RECENT_DAYS, cap=RECENT_CAP):
-    """拼出给模型的上下文字符串；conv_name 为空/通用则返回 ''。"""
+    """拼出给模型的上下文字符串；conv_name 为空/通用则返回 ''。
+    三层：关系卡（人格分寸，chat-persona 落库）+ 更早性格概括（summaries 分层缓存）
+        + 近期原文（现读，结合上下文）。"""
     if not conv_name or conv_name == "通用" or not os.path.exists(DB):
         return ""
     try:
         c = _conn()
         card = c.execute("SELECT card FROM relationship_cards WHERE conv_name=?", (conv_name,)).fetchone()
-        summ = c.execute(
-            "SELECT summary FROM summaries WHERE conv_name=? ORDER BY period_end DESC LIMIT 1",
-            (conv_name,)).fetchone()
+        summs = c.execute(
+            "SELECT period_start, period_end, summary FROM summaries WHERE conv_name=? "
+            "AND summary!='' ORDER BY period_start LIMIT 3",
+            (conv_name,)).fetchall()
         cutoff = (datetime.datetime.now() - datetime.timedelta(days=recent_days)).strftime("%Y-%m-%d %H:%M:%S")
         rows = c.execute(
             "SELECT sender, text, ts FROM messages WHERE conv_name=? AND ts>=? ORDER BY ts DESC LIMIT ?",
             (conv_name, cutoff, cap)).fetchall()
         c.close()
-    except Exception:
+    except Exception as e:
+        _err(f"build_context({conv_name})", e)
         return ""
 
     parts = []
     if card and card[0].strip():
         parts.append("【关系卡·长期有效】" + card[0].strip())
-    if summ and summ[0].strip():
-        parts.append("【更早对话摘要】" + summ[0].strip())
+    if summs:
+        lines = [f"· {ps[:10]}~{pe[:10]}：{sm.strip()}" for ps, pe, sm in summs]
+        parts.append("【更早性格概括（缓存，不必重读原文）】\n" + "\n".join(lines))
     if rows:
         lines = [f"{s}｜{t}：{x}" for s, x, t in reversed(rows)]
         parts.append("【近期对话（旧→新）】\n" + "\n".join(lines))
@@ -118,7 +159,8 @@ def detect_self():
             "ORDER BY COUNT(*) DESC LIMIT 1").fetchone()
         c.close()
         return row[0] if row else ""
-    except Exception:
+    except Exception as e:
+        _err("detect_self", e)
         return ""
 
 
@@ -136,7 +178,8 @@ def style_card(my_name=None, exclude=()):
         rows = c.execute("SELECT text FROM messages WHERE sender=? ORDER BY ts DESC LIMIT ?",
                          (name, STYLE_POOL)).fetchall()
         c.close()
-    except Exception:
+    except Exception as e:
+        _err("style_card", e)
         return ""
     texts = [t.strip() for (t,) in rows if t and t.strip()]
     if len(texts) < 8:

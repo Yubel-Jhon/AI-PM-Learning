@@ -17,5 +17,8 @@
   "key_pause": 0.12,
   "grace_seconds": 1.2,
   "start_expanded": false,
-  "auto_mode": true
+  "auto_mode": true,
+  "provider": "api",
+  "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "api_model": "qwen3.8-flash"
 }

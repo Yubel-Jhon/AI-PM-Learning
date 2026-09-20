@@ -58,6 +58,9 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 DEFAULT_CONFIG = {
     "ollama_host": "http://localhost:11434",
     "model": "qwen2.5:7b",
+    "provider": "api",          # 引擎二选一："api"=云端大模型(质量档) / "ollama"=本地模型(隐私档)
+    "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",  # 任意 OpenAI 兼容端点都行
+    "api_model": "qwen3.8-flash",   # api 档用的模型；key 放 local_settings.json（不入库）。嫌慢换 qwen-plus
     "hotkey": "alt+z",
     "mode": "polish",
     "recipient": "none",
@@ -320,6 +323,18 @@ class ZuitiApp:
                     cfg.update(json.load(f))
         except Exception as e:
             print(f"[config] 读取失败，用默认：{e}")
+        # API key 只放 local_settings.json（gitignore 排除）或系统环境变量，绝不进 config.json/仓库
+        try:
+            sp = os.path.join(BASE_DIR, "local_settings.json")
+            if os.path.exists(sp):
+                with open(sp, "r", encoding="utf-8") as f:
+                    sec = json.load(f)
+                if sec.get("api_key"):
+                    cfg["api_key"] = sec["api_key"]
+        except Exception as e:
+            print(f"[config] local_settings.json 读取失败：{e}")
+        if not cfg.get("api_key"):
+            cfg["api_key"] = os.environ.get("DASHSCOPE_API_KEY", "")
         return cfg
 
     # ---------------- 悬浮窗 UI ----------------
@@ -681,7 +696,18 @@ class ZuitiApp:
             self._status(f"快捷键启动失败:{e}", C_ERR, state="err")
         hk = self.cfg["hotkey"].upper().replace("+", " + ")
         self._set(lambda: self.hotkey_lbl.configure(text=f"快捷键 {hk} 触发"))
-        self._status("就绪 · 在钉钉里按它改写", C_OK, state="idle")
+        # 状态栏把引擎和记忆库情况说出来，别让"没记忆/走错引擎"变成哑巴问题
+        eng = self._engine_label()
+        if self.cfg.get("provider", "api") == "api" and not self._api_key():
+            eng += "（没配 key，回退本地）"
+        if HAS_CTX and ctxmod.available():
+            st = ctxmod.db_stats()
+            tag = f"（{os.path.basename(ctxmod.DB)}）" if os.environ.get("ZUITI_DB") else ""
+            self._status(f"就绪 · 引擎 {eng} · 记忆库{tag} {st['convs']}会话/{st['msgs']}条", C_OK, state="idle")
+        elif HAS_CTX:
+            self._status(f"就绪 · 引擎 {eng} · 未建记忆库，只走通用模式", C_WARN, state="idle")
+        else:
+            self._status(f"就绪 · 引擎 {eng} · 在钉钉里按热键改写", C_OK, state="idle")
 
     # ---------------- 主循环 / 任务队列 ----------------
     def _drain_queue(self):
@@ -711,6 +737,7 @@ class ZuitiApp:
             clip0 = pyperclip.paste()
         except Exception:
             pass
+        self._fg_capture()   # 记下 Alt+Z 时的前台窗口（多半是钉钉），预览窗会抢焦点
 
         self._status("读你写的…", C_WARN, state="work")
         draft = self._grab_selection()
@@ -722,8 +749,10 @@ class ZuitiApp:
             self._restore_clip(clip0)
             return
 
+        self._autopush = False
         if self.auto_mode:
             rec = suggest_mode(draft, self.recipient)
+            self._autopush = rec != self.mode   # 预览说明行要交代为什么推档
             if rec != self.mode:
                 self.mode = rec
                 self._set(self._highlight_mode)
@@ -752,20 +781,20 @@ class ZuitiApp:
                 self._press_send()
                 self._status("已发出 ✓", C_OK, state="done")
         else:
-            # 预览模式：不自动回车，弹窗由用户确认
-            ok = self._ask_preview(out, draft)
-            if ok is True:
-                self._paste(out)
+            # 预览模式：先开窗，改写边出字边显示；框里可直接改字，Enter 发的是改过的
+            sent, last = self._preview_flow(draft)
+            if sent is not None:
+                self._focus_back()   # 预览窗把焦点抢走了，先还给钉钉再粘
+                self._paste(sent)
                 self._press_send()
                 self._status("已发出 ✓", C_OK, state="done")
-            elif ok is False:
-                self._status("已放弃 · 内容在剪贴板里", C_WARN, state="idle")
-                # 保留改写到剪贴板，方便手动粘
-                try:
-                    pyperclip.copy(out)
-                except Exception:
-                    pass
-            # ok is None = 用户换一版，已在 _ask_preview 内重跑，忽略
+            else:
+                self._status("已放弃 · 成稿在剪贴板里", C_WARN, state="idle")
+                if last:
+                    try:
+                        pyperclip.copy(last)
+                    except Exception:
+                        pass
             return
 
         self._restore_clip(clip0)
@@ -850,35 +879,55 @@ class ZuitiApp:
         """成稿总质检 = 格式 lint + 原意保持度。"""
         return self._lint(t) + self._fact_check(draft, t)
 
-    def _rewrite(self, draft, variation=False):
+    def _rewrite(self, draft, variation=False, on_token=None, on_note=None):
         """改写主入口：缓存 → 模型 → 清洗 → 质检，不合格带原因重试一次。
+        on_token(部分成稿) 边出字边回调、on_note(过程说明) 给预览窗；不传则行为同前。
         返回 (成稿, degraded)；模型不可用时走本地规则降级。"""
         key = (draft, self.mode, self.recipient, self.conv)
         if not variation:
             hit = self._cache.get(key)
             if hit:
+                if on_note:
+                    on_note("✓ 通过（同输入复用上一版）")
                 return hit, False
         user_prompt = (self._ctxblock + "\n\n" if self._ctxblock else "") + "【我要发出去的原话】\n" + draft
         temp = float(self.cfg.get("temperature", 0.5)) + (0.25 if variation else 0.0)
+        if on_note:
+            on_note("正在改写…")
         try:
-            out = self._clean(self._call_ollama(user_prompt, self._build_system(variation=variation), temp))
+            out = self._clean(self._call_llm(
+                user_prompt, self._build_system(variation=variation), temp,
+                on_token=on_token, on_note=on_note))
         except Exception:
+            if on_note:
+                on_note("模型不可用 → 已换本地保守版")
             return self._rule_fallback(draft), True   # 模型不可用 → 本地规则降级
         reasons = self._violations(draft, out)
         if reasons:
+            if on_note:
+                on_note("⚠ " + "；".join(reasons[:2]) + " → 自动重写中")
+            if on_token:
+                on_token("")                          # 清掉第一版，别让两版叠在框里
             try:
-                out2 = self._clean(self._call_ollama(
+                out2 = self._clean(self._call_llm(
                     user_prompt,
                     self._build_system(variation=variation, lint_feedback="、".join(reasons[:3])),
-                    temp))
+                    temp, on_token=on_token, on_note=on_note))
             except Exception:
                 out2 = ""
             if out2 and not self._violations(draft, out2):
                 out = out2
+                if on_note:
+                    on_note("✓ 重写后通过")
             elif out and not any(w in out.lower() for w in self._CURSE) and not self._fact_check(draft, out):
-                pass             # 格式小毛病可容忍：第一版已清洗且没改事实
+                if on_note:                           # 格式小毛病可容忍：第一版已清洗且没改事实
+                    on_note("⚠ " + "；".join(reasons[:2]) + " · 小毛病可容忍，保留这版")
             else:
-                out = self._rule_fallback(draft)   # 事实被改 → 宁可退回保守规则版
+                out = self._rule_fallback(draft)      # 事实被改 → 宁可退回保守规则版
+                if on_note:
+                    on_note("⚠ 事实被改 → 已换本地保守版，原意优先")
+        elif on_note:
+            on_note("✓ 通过")
         if not variation:
             if len(self._cache) > 30:
                 self._cache.clear()
@@ -886,7 +935,10 @@ class ZuitiApp:
         return out, False
 
     def _warm_model(self):
-        """启动后台把模型拉进内存并 keep_alive，首次 Alt+Z 不用等冷启动。"""
+        """启动后台把模型拉进内存并 keep_alive，首次 Alt+Z 不用等冷启动。
+        只在本地档（ollama）预热；api 档无需预热。"""
+        if self.cfg.get("provider", "api") == "api" and self._api_key():
+            return
         try:
             requests.post(
                 self.cfg["ollama_host"].rstrip("/") + "/api/generate",
@@ -919,13 +971,84 @@ class ZuitiApp:
         except Exception:
             return ""
 
-    def _call_ollama(self, prompt, system, temperature=None):
+    # ---------------- 引擎：api（云端大模型） / ollama（本地模型） ----------------
+    # 同一份提示词喂哪个引擎都行；api 质量好，ollama 隐私好（话不出这台电脑）。
+    def _api_key(self):
+        return self.cfg.get("api_key") or ""
+
+    def _engine_label(self):
+        if self.cfg.get("provider", "api") == "api" and self._api_key():
+            return f"api·{self.cfg.get('api_model', 'qwen3.8-flash')}"
+        return f"本地·{self.cfg.get('model', '')}"
+
+    def _call_llm(self, prompt, system, temperature=None, on_token=None, on_note=None):
+        """按 provider 分发。api 档请求失败自动回本地模型再试一次，都不行才走规则兜底。"""
+        if self.cfg.get("provider", "api") == "api" and self._api_key():
+            try:
+                return self._call_api(prompt, system, temperature, on_token)
+            except Exception as e:
+                if on_note:
+                    on_note(f"api 不可用（{str(e)[:40]}）→ 回本地模型")
+                return self._call_ollama(prompt, system, temperature, on_token)
+        return self._call_ollama(prompt, system, temperature, on_token)
+
+    def _call_api(self, prompt, system, temperature=None, on_token=None):
+        """OpenAI 兼容端点（DashScope/GLM…）+ SSE 流式。"""
+        url = self.cfg.get("api_base", DEFAULT_CONFIG["api_base"]).rstrip("/") + "/chat/completions"
+        stream = on_token is not None
+        payload = {
+            "model": self.cfg.get("api_model", "qwen3.8-flash"),
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": prompt}],
+            "temperature": float(self.cfg.get("temperature", 0.5)) if temperature is None else temperature,
+            "max_tokens": int(self.cfg.get("num_predict", 160)),
+            "stop": ["\n"],   # 成稿就是一行，与 ollama 档口径一致
+            "stream": stream,
+        }
+        # qwen3 系默认开思考模式：思考先烧掉 max_tokens，50 字成稿等到天荒地老
+        # （实测：默认首块是 reasoning、13~66s 还超时掉兜底；关掉 3.5s 出稿）。
+        # 真想要思考：删掉下一行，并把 num_predict 调到 1024 以上。
+        if "qwen3" in payload["model"]:
+            payload["enable_thinking"] = False
+        headers = {"Authorization": "Bearer " + self._api_key()}
+        resp = requests.post(url, json=payload, headers=headers,
+                             timeout=float(self.cfg.get("req_timeout", 60)), stream=stream)
+        resp.raise_for_status()
+        if not stream:
+            return ((resp.json().get("choices") or [{}])[0].get("message", {}).get("content") or "").strip()
+        chunks = []
+        for line in resp.iter_lines():
+            if not line:
+                continue
+            s = line.decode("utf-8", "ignore")
+            if s.startswith("data:"):
+                s = s[5:].strip()
+            if not s or s == "[DONE]":
+                if s == "[DONE]":
+                    break
+                continue
+            try:
+                j = json.loads(s)
+            except Exception:
+                continue
+            try:
+                piece = j["choices"][0]["delta"].get("content") or ""
+            except Exception:
+                piece = ""
+            if piece:
+                chunks.append(piece)
+                on_token("".join(chunks))
+        return "".join(chunks).strip()
+
+    def _call_ollama(self, prompt, system, temperature=None, on_token=None):
+        """on_token 传了就走流式（每收一段回调一次累计成稿），否则一次拿全。"""
         url = self.cfg["ollama_host"].rstrip("/") + "/api/generate"
+        stream = on_token is not None
         payload = {
             "model": self.cfg["model"],
             "system": system,
             "prompt": prompt,
-            "stream": False,
+            "stream": stream,
             "keep_alive": str(self.cfg.get("keep_alive", "30m")),
             "options": {
                 "temperature": float(self.cfg.get("temperature", 0.5)) if temperature is None else temperature,
@@ -934,9 +1057,26 @@ class ZuitiApp:
                 "stop": ["\n"],   # 成稿就是一行；换行截断还能防“版本1/版本2”式输出
             },
         }
-        resp = requests.post(url, json=payload, timeout=float(self.cfg.get("req_timeout", 60)))
+        resp = requests.post(url, json=payload, timeout=float(self.cfg.get("req_timeout", 60)),
+                             stream=stream)
         resp.raise_for_status()
-        return (resp.json().get("response") or "").strip()
+        if not stream:
+            return (resp.json().get("response") or "").strip()
+        chunks = []
+        for line in resp.iter_lines():
+            if not line:
+                continue
+            try:
+                j = json.loads(line.decode("utf-8", "ignore"))
+            except Exception:
+                continue
+            piece = j.get("response") or ""
+            if piece:
+                chunks.append(piece)
+                on_token("".join(chunks))
+            if j.get("done"):
+                break
+        return "".join(chunks).strip()
 
     # 输出清洗：剥引号/前缀、并空白、去重复标点、卡 50 字
     _LEAD_LABELS = ("回复：", "回复:", "改写：", "改写:", "改写后：", "改写后:", "高情商版：", "高情商版:",
@@ -1031,28 +1171,167 @@ class ZuitiApp:
         except Exception:
             pass
 
-    # ---------------- 预览弹窗（自动发出=关 时使用） ----------------
-    def _ask_preview(self, out, draft):
-        """返回 True=发送 / False=放弃 / None=换一版(已自行重跑)"""
-        result = {"v": None}
+    # ---------------- 预览三件套：说明行 + 流式成稿 + 可编辑发送 ----------------
+    # 招式识别走本地规则（与 zuiti-rewrite skill 里“先识别对方招式”同一张表）。
+    # 标“疑似”：规则看不出语气，只给预览窗一个交代，不是结论。
+    _TACTIC_RULES = (
+        ("疑似在甩锅", ("不是我的", "你负责", "你确认过", "当时你们", "需求没写",
+                        "需求里没", "归你", "锅")),
+        ("疑似在催你", ("什么时候", "好了吗", "几点能", "啥时候", "deadline",
+                        "今天能", "明天要", "催什么", "进度")),
+        ("疑似在压你", ("必须", "凭什么", "再说一遍", "我说了", "领导说的",
+                        "公司规定", "没得商量", "不换人")),
+        ("疑似在试探", ("是不是", "能不能", "方便吗", "有没有可能", "帮我个忙", "你看看")),
+    )
+
+    def _guess_tactic(self, draft):
+        d = draft or ""
+        for name, words in self._TACTIC_RULES:
+            if any(w in d for w in words):
+                return name
+        return "正常沟通"
+
+    def _fg_capture(self):
+        """记下 Alt+Z 时的前台窗口句柄。预览窗一点就把焦点抢走了，
+        发送前不还回去，成稿会粘进预览窗而不是钉钉。"""
+        try:
+            import ctypes
+            self._fg_hwnd = ctypes.windll.user32.GetForegroundWindow()
+        except Exception:
+            self._fg_hwnd = 0
+
+    def _focus_back(self):
+        try:
+            import ctypes
+            if getattr(self, "_fg_hwnd", 0):
+                ctypes.windll.user32.SetForegroundWindow(self._fg_hwnd)
+                time.sleep(0.12)
+        except Exception:
+            pass
+
+    def _preview_flow(self, draft):
+        """预览模式主流程。三件套：
+        ①说明行——对象/语气档（自动推档要交代）/疑似招式；
+        ②流式——改写边出字边进文本框，质检不过会当场清框重写，用户全程看得见；
+        ③可编辑——出完字框里随便改，Enter 发的是框里当前文字。
+        Esc 放弃，Alt+R 拿原始草稿换一版（不在上一版上改，防意思漂移）。
+        返回 (发送的文本 or None, 最后一版成稿)。"""
+        state = {"busy": True, "closed": False, "sent": None, "last": ""}
         ev = threading.Event()
+        built = threading.Event()
+        ui = {}
+
+        def safe(fn):
+            def apply():
+                if state["closed"]:
+                    return
+                try:
+                    fn()
+                except (tk.TclError, KeyError):
+                    pass          # 窗口已关/控件还没建出来，静默丢掉这次刷新
+            self._set(apply)
+
+        def set_text(t):
+            txt = ui.get("txt")
+            if not txt:
+                return
+            txt.configure(state="normal")
+            txt.delete("1.0", "end")
+            txt.insert("1.0", t)
+            txt.see("end")
+            if state["busy"]:
+                txt.configure(state="disabled")
+
+        def on_token(partial):
+            safe(lambda: set_text(partial))
+
+        def on_note(msg):
+            color = C_OK if msg.startswith("✓") else (C_ERR if "模型不可用" in msg else C_WARN)
+            safe(lambda: ui["verdict"].configure(text="质检 " + msg, fg=color))
+
+        def finish(out):
+            state["busy"] = False
+            state["last"] = out
+
+            def go():
+                set_text(out)
+                ui["txt"].configure(state="normal")
+                ui["txt"].focus_set()
+            safe(go)
+
+        def worker(variation):
+            try:
+                out, _ = self._rewrite(draft, variation=variation,
+                                       on_token=on_token, on_note=on_note)
+            except Exception:
+                out = self._rule_fallback(draft)
+                on_note("模型不可用 → 已换本地保守版")
+            finish(out)
+
+        def done(send):
+            if state["closed"]:
+                return
+            if send and state["busy"]:
+                safe(lambda: ui["verdict"].configure(text="质检 还在改写… 出完字再发", fg=C_WARN))
+                return
+            state["closed"] = True
+            if send:
+                txt = ui.get("txt")
+                state["sent"] = (txt.get("1.0", "end-1c").strip() if txt else "") or state["last"]
+            ev.set()
+            try:
+                ui["win"].destroy()
+            except Exception:
+                pass
+
+        def vary():
+            if state["busy"] or state["closed"]:
+                return
+            state["busy"] = True
+            safe(lambda: (set_text(""), ui["verdict"].configure(
+                text="质检 换个说法，重新改写…", fg=C_INFO)))
+            threading.Thread(target=worker, args=(True,), daemon=True).start()
 
         def build():
             win = tk.Toplevel(self.root)
             win.attributes("-topmost", True)
             win.title("嘴替 · 预览")
             win.configure(bg=C_CARD)
-            win.geometry("360x170")
-            tk.Label(win, text="改好了，发吗？", bg=C_CARD, fg=C_TEXT,
-                     font=self._font(11, True)).pack(anchor="w", padx=14, pady=(12, 2))
-            tk.Label(win, text=out, bg=C_CARD2, fg=C_TEXT, wraplength=320, justify="left",
-                     anchor="w", font=self._font(10), padx=10, pady=8).pack(fill="x", padx=14, pady=4)
+            win.geometry("400x300")
+            # ① 说明行
+            mode_lb = MODE_LABELS.get(self.mode, self.mode)
+            if getattr(self, "_autopush", False):
+                mode_lb += "（检测到火气，自动推档）"
+            who = self.conv if (self._ctxblock and self.conv) else "无记忆库上下文"
+            tag = RECIPIENTS.get(self.recipient, "")
+            if tag and tag != "不指定":
+                who += "·" + tag
+            head = f"{who} ｜ 语气 {mode_lb} ｜ 识别：对方{self._guess_tactic(draft)}"
+            tk.Label(win, text=head, bg=C_CARD, fg=C_MUTED, wraplength=372, justify="left",
+                     anchor="w", font=self._font(9)).pack(fill="x", padx=14, pady=(12, 4))
+            # ② 流式成稿框（出完字可编辑）
+            txt = tk.Text(win, height=5, wrap="word", font=self._font(11),
+                          bg=C_CARD2, fg=C_TEXT, insertbackground=C_TEXT,
+                          relief="flat", padx=10, pady=8, state="disabled",
+                          highlightthickness=1, highlightbackground=C_LINE)
+            txt.pack(fill="both", expand=True, padx=14, pady=(0, 4))
+
+            def ret_send(e):
+                done(True)
+                return "break"        # 别往框里插换行，成稿就是一行
+            txt.bind("<Return>", ret_send)
+            txt.bind("<KP_Enter>", ret_send)
+            ui["txt"] = txt
+            # ③ 质检过程行
+            ui["verdict"] = tk.Label(win, text="质检 正在改写…", bg=C_CARD, fg=C_INFO,
+                                     wraplength=372, justify="left", anchor="w",
+                                     font=self._font(9))
+            ui["verdict"].pack(fill="x", padx=14)
+            tk.Label(win, text="框里可直接改字，Enter 发的就是改过的版本",
+                     bg=C_CARD, fg=C_MUTED, font=self._font(8)).pack(fill="x", padx=14)
             fr = tk.Frame(win, bg=C_CARD)
-            fr.pack(pady=10)
-            def done(v):
-                result["v"] = v
-                ev.set()
-                win.destroy()
+            fr.pack(pady=8)
+
             def flat(parent, text, cmd, accent=False):
                 b = tk.Label(parent, text=text, cursor="hand2", font=self._font(10),
                              bg=C_ACCENT if accent else C_CARD2,
@@ -1063,21 +1342,21 @@ class ZuitiApp:
                 b.bind("<Leave>", lambda e: b.configure(bg=C_ACCENT if accent else C_CARD2))
             flat(fr, "发送  Enter", lambda: done(True), accent=True)
             flat(fr, "算了  Esc", lambda: done(False))
-            flat(fr, "换个说法  Alt+R", lambda: done(None))
+            flat(fr, "换个说法  Alt+R", lambda: vary())
             win.bind("<Return>", lambda e: done(True))
             win.bind("<Escape>", lambda e: done(False))
-            win.bind("<Alt-r>", lambda e: done(None))
+            win.bind("<Alt-r>", lambda e: vary())
             win.protocol("WM_DELETE_WINDOW", lambda: done(False))
             # 不设超时自动发：预览模式的意义就是让人拍板，不选就一直等
+            ui["win"] = win
+            built.set()
 
         self._set(build)
+        if not built.wait(3.0):       # 窗口没建出来（极少见）：当放弃处理，别空跑改写
+            return None, ""
+        threading.Thread(target=worker, args=(False,), daemon=True).start()
         ev.wait()
-        if result["v"] is None:
-            # 换一版：拿原始草稿重改（不是在上一版上继续改，防止意思漂移）
-            self._status("换个说法…", C_INFO, state="work")
-            new, _ = self._rewrite(draft, variation=True)
-            return self._ask_preview(new or out, draft)
-        return result["v"]
+        return state["sent"], state["last"]
 
     def _cancel_send(self):
         self._cancel.set()
