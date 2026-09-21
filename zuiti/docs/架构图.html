@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>嘴替 · 系统架构 v2</title>
+<title>小替 · 系统架构 v3</title>
 <style>
   :root{
     --bg:#0B0D13; --panel:#12141D; --card:#171922; --card2:#232634; --line:#2C3040;
@@ -23,11 +23,12 @@
   .hero h1{font-size:34px;letter-spacing:1px}
   .hero h1 em{font-style:normal;background:linear-gradient(90deg,var(--accent),var(--accent2));
     -webkit-background-clip:text;background-clip:text;color:transparent}
-  .hero p{color:var(--muted);margin-top:10px;font-size:15px;max-width:760px}
+  .hero p{color:var(--muted);margin-top:10px;font-size:15px;max-width:780px}
   .tags{margin-top:18px;display:flex;gap:10px;flex-wrap:wrap}
   .tag{font-size:12px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
   .tag.b{border-color:rgba(76,125,255,.45);color:var(--info)}
   .tag.g{border-color:rgba(61,220,132,.4);color:var(--ok)}
+  .tag.p{border-color:rgba(138,92,255,.45);color:var(--accent2)}
 
   /* ---------- 章节 ---------- */
   section{margin-bottom:64px}
@@ -39,7 +40,6 @@
   /* ---------- 分层全景 ---------- */
   .layer{display:grid;grid-template-columns:150px 1fr;gap:0;
     background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .layer+.layer{margin-top:0}
   .layer .lab{padding:16px 18px;border-right:1px solid var(--line);background:var(--card2)}
   .layer .lab b{display:block;font-size:14.5px}
   .layer .lab span{font-size:11.5px;color:var(--muted)}
@@ -52,7 +52,7 @@
   .chip.hot{border-color:rgba(76,125,255,.5)}
   .chip.core{border-color:rgba(138,92,255,.55);background:rgba(138,92,255,.08)}
   .chip.new{border-color:rgba(61,220,132,.45)}
-  .chip.new::before{content:"v2 ";font-size:10px;color:var(--ok);font-weight:700}
+  .chip.new::before{content:"v3 ";font-size:10px;color:var(--ok);font-weight:700}
   .flow-arrow{text-align:center;color:var(--muted);font-size:13px;padding:5px 0}
   .flow-arrow b{color:var(--accent);font-size:14px}
   .xcut{margin-top:18px;border:1px dashed var(--line);border-radius:12px;padding:12px 16px;
@@ -169,30 +169,32 @@
 
   <!-- ============ 头部 ============ -->
   <div class="hero">
-    <h1>嘴替 · <em>系统架构 v2</em></h1>
-    <p>一句话：钉钉没有发送前接口，就在系统层造一个「闸」——草稿抓取 → 本地 7B 改写 → 质检闭环 → 用户拍板。
-       五层单向依赖，横切配置与降级，话不出本机。</p>
+    <h1>小替 · <em>系统架构 v3</em></h1>
+    <p>一句话：钉钉没有发送前接口，就在系统层造一个「闸」——草稿抓取 → 认人定档 → 双引擎改写 →
+       两层质检 → 用户拍板。悬浮窗自动挡与 Claude skill 手动挡跑同一套规则；
+       记忆库 + 人物卡双库喂分寸，越用越准。</p>
     <div class="tags">
-      <span class="tag g">全程本地 · 0 出网</span>
-      <span class="tag b">Ollama qwen2.5:7b</span>
-      <span class="tag">Python + Tkinter 单进程</span>
+      <span class="tag b">双引擎 · 云千问默认</span>
+      <span class="tag g">Ollama 隐私档 · 草稿不出机</span>
+      <span class="tag p">skill 双件套 · 同一套规则</span>
+      <span class="tag b">两层质检闭环</span>
       <span class="tag g">默认预览 · 发送闸门</span>
-      <span class="tag b">v2 质检闭环</span>
+      <span class="tag">Python + Tkinter 单进程</span>
     </div>
   </div>
 
   <!-- ============ 01 分层全景 ============ -->
   <section>
     <div class="sec-head"><span class="sec-no">01</span><h2>分层全景 · 五层单向</h2></div>
-    <p class="sec-sub">上层只依赖下层，依赖方向唯一向下。交互层永远不直接碰模型层，中间隔着编排层与改写引擎——质检闭环全部收在引擎层内，编排层只拿结果。</p>
+    <p class="sec-sub">上层只依赖下层，依赖方向唯一向下。交互层永远不直接碰引擎层，中间隔着编排层与改写引擎——两层质检全部收在引擎层内，编排层只拿结果。</p>
 
     <div class="layer">
       <div class="lab human"><b>L1 交互层</b><span>人只看见这里</span></div>
       <div class="comps">
         <span class="chip">钉钉输入框<small>宿主应用 · 系统级模拟</small></span>
         <span class="chip hot">Alt+Z 全局热键<small>keyboard 库</small></span>
-        <span class="chip">悬浮窗面板<small>对象/语气/发送闸 开关</small></span>
-        <span class="chip">预览弹窗<small>发送 / Esc 弃 / 换一版</small></span>
+        <span class="chip">悬浮窗面板<small>对象 / 语气 / 发送闸 / 模仿口吻 开关</small></span>
+        <span class="chip new">预览窗三件套<small>说明行（对象·档位·疑似招式）· 流式出字 · 可编辑成稿</small></span>
       </div>
     </div>
     <div class="flow-arrow">▼ 调用</div>
@@ -201,61 +203,107 @@
       <div class="comps">
         <span class="chip">任务队列 + busy 锁<small>防热键连击并发</small></span>
         <span class="chip">草稿抓取<small>选区优先 → 全选兜底 · 200 字保险丝</small></span>
-        <span class="chip">语气自动推荐<small>情绪词 × 对象关系 · 保守策略</small></span>
+        <span class="chip new">认人定档<small>人物卡 / 记忆库读分寸 · 对方招式识别 · 判型推语气档</small></span>
         <span class="chip">发送控制<small>grace 1.2s + Esc 反悔 / 预览闸</small></span>
       </div>
     </div>
     <div class="flow-arrow">▼ 调用</div>
     <div class="layer">
-      <div class="lab eng"><b>L3 改写引擎</b><span>v2 重构核心</span></div>
+      <div class="lab eng"><b>L3 改写引擎</b><span>质检闭环核心</span></div>
       <div class="comps">
-        <span class="chip core">Prompt 装配器<small>规则 + 模式分支 + few-shot 示例 ×3 + 对象分寸 + 记忆上下文</small></span>
-        <span class="chip new">质检器 lint<small>客服腔 / 脏字 / 说明性泄漏 / emoji 超量</small></span>
+        <span class="chip core">Prompt 装配器<small>规则 + 模式分支 + few-shot 示例 ×3 + 对象分寸 + 记忆上下文 + 自我卡</small></span>
+        <span class="chip new">质检器 lint<small>6 类违禁：客服腔 / 脏字 / 说明性泄漏 / emoji 超量 / 太短 / 超 50 字</small></span>
+        <span class="chip new">原意保持度 fact_check<small>立场不翻转 · 数字不新增 · 时间不漂移</small></span>
         <span class="chip new">重试器<small>带违规原因重试 ×1</small></span>
         <span class="chip">清洗器<small>剥前缀引号 · 卡 50 字</small></span>
-        <span class="chip new">结果缓存<small>(草稿,模式,对象,对话)</small></span>
-        <span class="chip">规则兜底<small>模型不可用时的最后防线</small></span>
+        <span class="chip">结果缓存<small>(草稿,模式,对象,对话)</small></span>
+        <span class="chip">规则兜底<small>引擎全挂时的最后防线</small></span>
       </div>
     </div>
     <div class="flow-arrow">▼ 调用</div>
     <div class="layer">
-      <div class="lab model"><b>L4 模型层</b><span>本地推理</span></div>
+      <div class="lab model"><b>L4 引擎层</b><span>双引擎 + 自动回退</span></div>
       <div class="comps">
-        <span class="chip">Ollama API<small>localhost:11434</small></span>
-        <span class="chip hot">qwen2.5:7b<small>keep_alive 30m · num_ctx 4096 · stop 换行</small></span>
+        <span class="chip hot">_call_llm 分发器<small>api 档失败自动回本地再试，都不行才走规则兜底</small></span>
+        <span class="chip">DashScope 云端<small>qwen3.8-flash 默认 · enable_thinking 自动关 · 实测 2.7~3.7s</small></span>
+        <span class="chip">Ollama 本地<small>qwen2.5:7b 隐私档 · keep_alive 30m · num_ctx 4096</small></span>
         <span class="chip new">启动预热线程<small>后台拉模型进内存 · 免首次冷启动</small></span>
       </div>
     </div>
     <div class="flow-arrow">▼ 只读</div>
     <div class="layer">
-      <div class="lab mem2"><b>L5 记忆层</b><span>只读 · 生产在外部</span></div>
+      <div class="lab mem2"><b>L5 记忆·人物层</b><span>只读 · 生产在外部</span></div>
       <div class="comps">
-        <span class="chip">context.db (SQLite)<small>详见 04 · 关系卡永久 / 近 1 月原文强记忆</small></span>
+        <span class="chip">context.db (SQLite)<small>关系卡永久 / 近 1 月原文强记忆 · 详见 05</small></span>
+        <span class="chip new">persona_cards/ 人物卡<small>chat-persona 产物 · 实战回写「近期观察」</small></span>
         <span class="chip">build_context()<small>按对象拼上下文 → 注入 Prompt</small></span>
+        <span class="chip new">style_card() 自我卡<small>从你的历史消息提炼口吻 · 让成稿像你本人</small></span>
       </div>
     </div>
 
     <div class="xcut">
       <span class="t">横切 · 配置</span>
-      <span class="chip">config.json<small>热键 / 模式 / 发送键 / 温度 / keep_alive / num_ctx</small></span>
-      <span class="chip">DEFAULT_CONFIG 兜底<small>配置损坏也能起</small></span>
+      <span class="chip">config.json<small>引擎 / 热键 / 模式 / 发送键 / 温度</small></span>
+      <span class="chip">local_settings.json + DASHSCOPE_API_KEY<small>api key 只放这两处 · gitignore 排除 · 绝不进仓库</small></span>
       <span class="t" style="margin-left:12px">横切 · 降级</span>
-      <span class="chip">故障 → 策略矩阵<small>详见 05</small></span>
+      <span class="chip">故障 → 策略矩阵<small>详见 06</small></span>
     </div>
   </section>
 
-  <!-- ============ 02 数据流 ============ -->
+  <!-- ============ 02 skill 双件套 ============ -->
   <section>
-    <div class="sec-head"><span class="sec-no">02</span><h2>Alt+Z 一次按键的完整生命线</h2></div>
+    <div class="sec-head"><span class="sec-no">02</span><h2>skill 双件套 · 同一套规则的两个壳</h2></div>
+    <p class="sec-sub">悬浮窗是「自动挡」：Alt+Z 嵌在输入流程里，规则写死在代码。skill 是「手动挡」：把原话丢给 Claude（"嘴替 + 贴那条消息"），走同一套改写规则——两壳一芯，规则改动两处同步。</p>
+
+    <div class="mem">
+      <div class="col">
+        <h3>自动挡 · 悬浮窗（script/）</h3>
+        <div class="sub">嵌进钉钉输入流程 · 全自动</div>
+        <ul class="prod">
+          <li>zuiti_overlay.py<small>抓草稿 → 改写 → 质检 → 预览闸</small></li>
+          <li>context.py<small>记忆库只读 + 自我卡</small></li>
+          <li>build_context_db.py<small>记忆库重建</small></li>
+        </ul>
+      </div>
+      <div class="arrow">⇄</div>
+      <div class="col">
+        <h3>接口 · persona_cards/ 人物卡</h3>
+        <div class="sub">两个壳共用的记忆载体</div>
+        <div class="tier p"><b>3do / 3don't</b><span>本人对症策略 · 盖过通用分寸表</span></div>
+        <div class="tier s"><b>MBTI 四维证据</b><span>每轴带原句依据 · 判型推语气档</span></div>
+        <div class="tier w"><b>近期观察</b><span>实战新招式 / 被打脸的判断 · 回写于此</span></div>
+      </div>
+      <div class="arrow">⇄</div>
+      <div class="col">
+        <h3>手动挡 · skill（skill/）</h3>
+        <div class="sub">Claude 会话里执行 · 同一套规则</div>
+        <ul class="prod">
+          <li>zuiti-rewrite<small>三档语气 / 硬规则 / 候选模式 A·B·C</small></li>
+          <li>chat-persona<small>人物分析 · 头像识人零语料冷启动</small></li>
+          <li>回灌闭环<small>分析出卡 → 改写带分寸 → 实况回写 → 下次先读</small></li>
+        </ul>
+      </div>
+    </div>
+    <div class="loop-notes">
+      <span class="br"><b>认人三路：</b>有人物卡 → 读卡（先读「近期观察」）；无卡刚加上好友 → 头像识人
+        （初印象衰减：刚加上 ≈95% → 三五天 ≈45% → 一周后 ≈8% 只按说话来）；都无 → 通用分寸表。</span>
+      <span class="br g"><b>落点铁律：</b>人物卡决定「怎么对他说话」，招式识别决定「这话在干什么」，
+        硬规则决定「什么不能说」——三者冲突时：硬规则 &gt; 人物卡 &gt; 招式。</span>
+    </div>
+  </section>
+
+  <!-- ============ 03 数据流 ============ -->
+  <section>
+    <div class="sec-head"><span class="sec-no">03</span><h2>Alt+Z 一次按键的完整生命线</h2></div>
     <p class="sec-sub">从按下热键到消息发出共 9 步，任何一步失败都不产生「半截动作」：要么完整发出，要么草稿原样保留。</p>
 
     <div class="pipe">
       <div class="step"><span class="n">STEP 1</span><b>热键入队</b><span>keyboard → job_q，busy 锁防连击</span></div>
       <div class="step"><span class="n">STEP 2</span><b>备份剪贴板</b><span>原始剪贴板内容暂存，结束后还原</span></div>
       <div class="step"><span class="n">STEP 3</span><b>抓草稿</b><span>Ctrl+C 选区 → 失败则全选兜底；&gt;200 字中止</span></div>
-      <div class="step"><span class="n">STEP 4</span><b>定语气</b><span>手动锁定 or 情绪词×对象自动推荐</span></div>
-      <div class="step qc"><span class="n">STEP 5</span><b>查缓存</b><span>同请求直接出结果，不重跑模型</span></div>
-      <div class="step qc"><span class="n">STEP 6</span><b>改写+质检</b><span>拼 Prompt → Ollama → 清洗 → lint（详见 03）</span></div>
+      <div class="step"><span class="n">STEP 4</span><b>定语气</b><span>手动锁定 or 情绪词×对象自动推荐 + 疑似招式识别</span></div>
+      <div class="step qc"><span class="n">STEP 5</span><b>查缓存</b><span>同请求直接出结果，不重跑引擎</span></div>
+      <div class="step qc"><span class="n">STEP 6</span><b>改写+质检</b><span>拼 Prompt → 双引擎 → 清洗 → 两层质检（详见 04）</span></div>
       <div class="step"><span class="n">STEP 7</span><b>写缓存</b><span>仅成功结果入缓存，上限 30 条</span></div>
       <div class="step out"><span class="n">STEP 8</span><b>发送闸</b><span>预览窗拍板 / 自动发出 grace+Esc 反悔</span></div>
       <div class="step out"><span class="n">STEP 9</span><b>还原现场</b><span>剪贴板还原，状态回报悬浮窗</span></div>
@@ -266,32 +314,37 @@
     </div>
   </section>
 
-  <!-- ============ 03 质量闭环 ============ -->
+  <!-- ============ 04 两层质检 ============ -->
   <section>
-    <div class="sec-head"><span class="sec-no">03</span><h2>质量闭环 · 7B 的短板用工程补</h2></div>
-    <p class="sec-sub">7B 小模型堆指令没用，堆示例才有效；示例管风格，质检管底线。v2 的思路：把「发现坏输出 → 带原因重教」做成模型外的工程闭环，而不是指望模型自己争气。</p>
+    <div class="sec-head"><span class="sec-no">04</span><h2>两层质检闭环 · 模型的短板用工程补</h2></div>
+    <p class="sec-sub">示例管风格，质检管底线；风格要像人，底线是「截图不怕、原意不走样」。把「发现坏输出 → 带原因重教」做成模型外的工程闭环，而不是指望模型自己争气。</p>
 
     <div class="loop">
-      <div class="node"><b>模型出稿</b><small>Ollama · stop 换行防多版本</small></div>
+      <div class="node"><b>引擎出稿</b><small>流式回调 · 边出字边进预览框</small></div>
       <div class="node"><b>清洗器</b><small>剥前缀/引号 · 卡 50 字</small></div>
-      <div class="node warn"><b>lint 质检</b><small>4 类违禁模式</small></div>
+      <div class="node warn"><b>① 格式 lint</b><small>6 类违禁模式</small></div>
+      <div class="node warn"><b>② 原意保持度</b><small>立场 / 数字 / 时间</small></div>
       <div class="node ok"><b>过关 → 交付</b><small>写缓存 · 进发送闸</small></div>
     </div>
     <div class="loop" style="margin-top:12px;border-style:dashed">
-      <div class="node warn"><b>lint 不过</b><small>收集违规原因</small></div>
+      <div class="node warn"><b>任一层不过</b><small>收集违规原因</small></div>
       <div class="node"><b>带原因重试 ×1</b><small>「你上一版的问题：xxx」注入 system</small></div>
-      <div class="node warn"><b>二次 lint</b><small>同一把尺子</small></div>
-      <div class="node err"><b>仍不过 → 兜底</b><small>第一版去脏字保底 / 本地规则改写</small></div>
+      <div class="node warn"><b>二次质检</b><small>同一把尺子</small></div>
+      <div class="node err"><b>仍不过 → 兜底</b><small>没改事实容忍保留并说明 / 事实被改退保守规则版</small></div>
     </div>
     <div class="loop-notes">
-      <span class="br"><b>lint 四类违禁：</b>客服腔（收到~/感谢您的理解与支持/请您放心…）· 脏字残留 · 说明性文字泄漏（"以下是改写"）· emoji 超量</span>
-      <span class="br g"><b>为什么重试只做一次：</b>本地模型重试成本=翻倍延迟。一次重试覆盖 80%+ 的坏输出，两次以上说明草稿本身有歧义，该让人看而不是让机器猜。</span>
+      <span class="br"><b>① lint 六类：</b>客服腔（收到~/感谢您的理解与支持/请您放心…）· 脏字残留（含拼音简写
+        tm/tmd/sb）· 说明性文字泄漏 · emoji 超量 · 太短没信息量 · 超 50 字</span>
+      <span class="br"><b>② 原意保持度三类：</b>拒绝不能被改成答应、答应不能被改成拒绝 · 成稿不许出现原话没有的数字
+        · 时间口径不漂移（周三→周五 / 上午→下午）。丢弃细节不算违规，只查「改了」。</span>
+      <span class="br g"><b>两张脏字表要同步改：</b>模块级 _CURSE_WORDS 判草稿火气 → 推语气档；
+        ZuitiApp._CURSE 判成稿残留 + 喂规则兜底——改一处记得改另一处。</span>
     </div>
   </section>
 
-  <!-- ============ 04 记忆库 ============ -->
+  <!-- ============ 05 记忆与人物卡 ============ -->
   <section>
-    <div class="sec-head"><span class="sec-no">04</span><h2>记忆库 · 生产与消费分离</h2></div>
+    <div class="sec-head"><span class="sec-no">05</span><h2>记忆库与人物卡 · 生产与消费分离</h2></div>
     <p class="sec-sub">悬浮窗调不动钉钉（宿主认证隔离），所以记忆的生产整体外置给 QwenWork 侧，脚本只持有只读 SQLite。读写分离让最脆弱的一端（UI 进程）保持无状态。</p>
 
     <div class="mem">
@@ -300,18 +353,19 @@
         <div class="sub">可挂定时任务 · 脚本不可达故外置</div>
         <ul class="prod">
           <li>dws chat +chat-messages<small>拉取钉钉消息导出</small></li>
-          <li>dumps/*.json<small>原始消息落盘</small></li>
+          <li>dumps/*.json<small>原始消息落盘 · 不入仓库</small></li>
           <li>build_context_db.py<small>幂等落库 · 重跑不重不漏</small></li>
         </ul>
       </div>
       <div class="arrow">→</div>
       <div class="col">
-        <h3>context.db · 四张表</h3>
-        <div class="sub">SQLite · 单文件 · 随工具走</div>
-        <div class="tier p"><b>relationship_cards · 关系卡</b><span>永久 · 不随时间衰减 · 关键关系锚点</span></div>
+        <h3>存储 · 四张表 + 人物卡</h3>
+        <div class="sub">SQLite 单文件 + persona_cards/ 目录</div>
+        <div class="tier p"><b>relationship_cards · 关系卡</b><span>永久 · 不随时间衰减</span></div>
         <div class="tier s"><b>messages · 近期原文</b><span>强记忆 · 近 1 月 · 封顶 25 条</span></div>
-        <div class="tier w"><b>summaries · 摘要层</b><span>弱记忆 · 表结构已建 · 生成待接（v3）</span></div>
+        <div class="tier w"><b>summaries · 摘要层</b><span>弱记忆 · 表结构已建 · 生成待接</span></div>
         <div class="tier"><b>conversations · 会话注册</b><span>名字 / 类型 / 对象标签</span></div>
+        <div class="tier s"><b>persona_cards/ · 人物卡</b><small>chat-persona 产出 · 回灌关系卡</small></div>
       </div>
       <div class="arrow">→</div>
       <div class="col">
@@ -320,40 +374,42 @@
         <table class="tbl">
           <tr><th>动作</th><th>效果</th></tr>
           <tr><td>选常用对话</td><td>关系卡 + 近期原文 → 注入 Prompt</td></tr>
-          <tr><td>选角色</td><td>只带对象分寸规则，不带历史</td></tr>
-          <tr><td>通用</td><td>退回无上下文 · 库缺失同样降级</td></tr>
+          <tr><td>模仿我的口吻</td><td>自我卡（句长/称呼/语气词）注入，硬规则优先</td></tr>
+          <tr><td>有人物卡</td><td>3do/3don't + MBTI 翻译 → 盖过通用分寸</td></tr>
+          <tr><td>通用 / 库缺失</td><td>退回无上下文 · 明说「只走通用模式」</td></tr>
         </table>
       </div>
     </div>
   </section>
 
-  <!-- ============ 05 降级矩阵 ============ -->
+  <!-- ============ 06 降级矩阵 ============ -->
   <section>
-    <div class="sec-head"><span class="sec-no">05</span><h2>降级矩阵 · 每种坏都有预案</h2></div>
+    <div class="sec-head"><span class="sec-no">06</span><h2>降级矩阵 · 每种坏都有预案</h2></div>
     <p class="sec-sub">架构图思维的关键一条：不画「一切正常」的图。每条依赖都问一句「它挂了用户看到什么」——答案必须是有感知、无事故。</p>
     <table class="mx">
       <tr><th style="width:22%">故障 / 异常</th><th style="width:44%">策略</th><th>用户感知</th></tr>
-      <tr><td><b>Ollama 未启动 / 超时</b></td><td>异常捕获 → 本地规则改写（删脏字、软化反问、收敛标点），绝不原样发出</td><td><span class="pill w">状态条提示</span>「模型不可用·已本地降级」</td></tr>
-      <tr><td><b>出稿含违禁内容</b></td><td>lint 带原因重试 ×1 → 仍不过取第一版去脏字保底 → 最后走规则兜底</td><td><span class="pill g">无感</span>只在预览窗看到干净成稿</td></tr>
-      <tr><td><b>记忆库缺失 / 表空</b></td><td>build_context 返回空串 → 退回无上下文通用改写</td><td><span class="pill g">无感</span>对象下拉只剩「通用」</td></tr>
+      <tr><td><b>云端 api 未配 key / 超时</b></td><td>_call_llm 自动回本地 Ollama 再试一次；本地也不行才走规则兜底（删脏字、软化反问、收敛标点），绝不原样发出</td><td><span class="pill w">状态条提示</span>「回退本地」→「已本地降级」</td></tr>
+      <tr><td><b>出稿含违禁 / 改了事实</b></td><td>两层质检带原因重试 ×1 → 仍不过：没改事实容忍保留并说明；事实被改 → 退回保守规则版</td><td><span class="pill g">无感</span>只在预览窗看到干净成稿</td></tr>
+      <tr><td><b>记忆库缺失 / 表空</b></td><td>build_context 返回空串 → 退回无上下文通用改写，不静默、控制台打原因</td><td><span class="pill g">无感</span>状态条明说「只走通用模式」</td></tr>
+      <tr><td><b>人物卡缺失</b></td><td>退回通用分寸表；改写端顺手提醒「跑一次人物分析并落缓存，以后就自动了」</td><td><span class="pill g">无感</span>分寸按通用档</td></tr>
       <tr><td><b>抓取内容 &gt;200 字</b></td><td>判定误选（选到了聊天记录而非草稿）→ 直接中止，不动剪贴板</td><td><span class="pill r">明确报错</span>「抓到内容过长，已中止」</td></tr>
       <tr><td><b>草稿为空 / 未选中</b></td><td>中止并报错，不进入改写</td><td><span class="pill r">明确报错</span>「没读到你写的字」</td></tr>
-      <tr><td><b>预览 30 秒无操作</b></td><td>不动作（v1 旧版会自动发出，v2 移除）</td><td><span class="pill g">一直等</span>拍板权完全在人</td></tr>
+      <tr><td><b>预览无操作</b></td><td>不动作（v1 旧版 30 秒自动发出已移除）</td><td><span class="pill g">一直等</span>拍板权完全在人</td></tr>
       <tr><td><b>config.json 损坏</b></td><td>回退 DEFAULT_CONFIG 继续跑</td><td><span class="pill w">控制台提示</span>面板行为回默认</td></tr>
     </table>
   </section>
 
-  <!-- ============ 06 设计原则 + 演进 ============ -->
+  <!-- ============ 07 设计原则 + 演进 ============ -->
   <section>
-    <div class="sec-head"><span class="sec-no">06</span><h2>四条设计原则</h2></div>
+    <div class="sec-head"><span class="sec-no">07</span><h2>四条设计原则</h2></div>
     <div class="grid4">
-      <div class="pcard"><b><i style="color:var(--ok)">🔒</i>话不出本机</b><p>唯一网络调用是 localhost:11434。改写、记忆、质检全部本地闭环，截图发出去的每句话都不经过第三方。</p></div>
+      <div class="pcard"><b><i style="color:var(--ok)">🔒</i>隐私是可选档</b><p>默认云端质量档（key 只在 local_settings.json / 环境变量）；一行配置切 Ollama 隐私档，草稿、记忆、质检全程不出机。隐私按需选，不绑架效果。</p></div>
       <div class="pcard"><b><i style="color:var(--warn)">🚧</i>发送必须过闸</b><p>默认预览拍板；自动发出也留 1.2s grace + Esc 反悔。架构上「发出」是显式动作，不是改写的副作用。</p></div>
       <div class="pcard"><b><i style="color:var(--info)">🤝</i>不侵入宿主</b><p>不钻钉钉内部、不 hook 进程，全部系统级模拟（剪贴板+按键）。代价是焦点与剪贴板的临时占用，用「还原现场」补偿。</p></div>
-      <div class="pcard"><b><i style="color:var(--accent2)">🎯</i>7B 现实主义</b><p>小模型不堆指令堆示例；风格靠 few-shot，底线靠外部质检闭环。工程补智能，而不是假装模型够聪明。</p></div>
+      <div class="pcard"><b><i style="color:var(--accent2)">🎯</i>质检在模型外</b><p>示例管风格，质检管底线。不管引擎是云端还是本地，lint + 原意保持度都跑在模型外的工程闭环里——模型可以换，底线不换。</p></div>
     </div>
 
-    <div class="sec-head" style="margin-top:44px"><span class="sec-no">07</span><h2>演进路线</h2></div>
+    <div class="sec-head" style="margin-top:44px"><span class="sec-no">08</span><h2>演进路线</h2></div>
     <div class="evo">
       <div class="v">
         <h4>v1 单轮改写<span>已退役</span></h4>
@@ -364,8 +420,8 @@
           <li>无预热，首次按键冷启动干等</li>
         </ul>
       </div>
-      <div class="v now">
-        <h4>v2 质检闭环<span>当前版本</span></h4>
+      <div class="v">
+        <h4>v2 质检闭环<span>已收编</span></h4>
         <ul>
           <li class="on">每档 3 条 few-shot 示例 + 招式识别</li>
           <li class="on">lint → 带原因重试 → 规则兜底 三级防线</li>
@@ -373,42 +429,54 @@
           <li class="on">换一版回归原始草稿，温度 +0.25 出变体</li>
         </ul>
       </div>
+      <div class="v now">
+        <h4>v3 双引擎 + 双件套<span>当前版本</span></h4>
+        <ul>
+          <li class="on">双引擎：云端千问默认 · Ollama 隐私档 · 自动回退</li>
+          <li class="on">两层质检：格式 lint + 原意保持度（立场/数字/时间）</li>
+          <li class="on">预览窗三件套：说明行 · 流式出字 · 可编辑成稿</li>
+          <li class="on">自我卡模仿口吻 · 人物卡+头像识人 · skill 双件套入库</li>
+        </ul>
+      </div>
       <div class="v">
-        <h4>v3 候选方向<span>待定</span></h4>
+        <h4>v4 候选方向<span>待定</span></h4>
         <ul>
           <li>摘要层自动生成，强记忆跨月不丢</li>
           <li>对象自动识别（免手选下拉）</li>
-          <li>流式预览，出稿即所见</li>
-          <li>算力允许时：三候选并行、人挑一</li>
+          <li>悬浮窗三候选并行（手动挡已有候选模式 A/B/C）</li>
         </ul>
       </div>
     </div>
   </section>
 
-  <!-- ============ 08 接口契约 ============ -->
+  <!-- ============ 09 接口契约 ============ -->
   <section>
-    <div class="sec-head"><span class="sec-no">08</span><h2>接口契约</h2></div>
+    <div class="sec-head"><span class="sec-no">09</span><h2>接口契约</h2></div>
     <p class="sec-sub">层与层之间只通过这些函数说话——评审时对签名即对架构。</p>
     <details>
       <summary>展开：核心函数签名与职责边界</summary>
       <table class="tbl" style="font-size:12.5px">
-        <tr><th style="width:34%">签名</th><th>职责 · 所在层</th></tr>
+        <tr><th style="width:38%">签名</th><th>职责 · 所在层</th></tr>
         <tr><td><code>run_pipeline()</code></td><td>九步生命线编排，不写业务规则 · L2</td></tr>
-        <tr><td><code>_rewrite(draft, variation=False) → (成稿, degraded)</code></td><td>改写主入口：缓存→模型→清洗→lint→重试→兜底，编排层只拿结果 · L3</td></tr>
-        <tr><td><code>_build_system(variation, lint_feedback) → str</code></td><td>Prompt 唯一装配点：规则+模式+示例+分寸+记忆 · L3</td></tr>
-        <tr><td><code>_lint(t) → [违规原因…]</code></td><td>质检尺子，返回空即过关；重试与兜底都认它 · L3</td></tr>
+        <tr><td><code>suggest_mode(draft, recipient) → mode</code></td><td>语气推荐 + 招式识别，保守策略 · L2</td></tr>
+        <tr><td><code>_rewrite(draft, variation, on_token, on_note) → (成稿, degraded)</code></td><td>改写主入口：缓存→双引擎→清洗→两层质检→重试→兜底；流式回调给预览窗 · L3</td></tr>
+        <tr><td><code>_build_system(variation, lint_feedback) → str</code></td><td>Prompt 唯一装配点：规则+模式+示例+分寸+记忆+自我卡 · L3</td></tr>
+        <tr><td><code>_lint(t) → [违规原因…]</code></td><td>格式质检尺（6 类），返回空即过关 · L3</td></tr>
+        <tr><td><code>_fact_check(draft, out) → [违规原因…]</code></td><td>原意保持度：立场不翻转 / 数字不新增 / 时间不漂移 · L3</td></tr>
+        <tr><td><code>_violations(draft, t) → [违规原因…]</code></td><td>总质检 = _lint + _fact_check，重试与兜底都认它 · L3</td></tr>
         <tr><td><code>_clean(text) → str</code></td><td>格式清洗，不做内容判断 · L3</td></tr>
-        <tr><td><code>_rule_fallback(text) → str</code></td><td>无模型最后防线 · L3</td></tr>
-        <tr><td><code>_call_ollama(prompt, system, temperature) → str</code></td><td>模型层唯一出口，keep_alive/num_ctx/stop 收敛在此 · L4</td></tr>
+        <tr><td><code>_rule_fallback(text) → str</code></td><td>引擎全挂时的最后防线 · L3</td></tr>
+        <tr><td><code>_call_llm(prompt, system, temperature, on_token)</code></td><td>引擎分发：api → ollama → 规则兜底，回退只在这层 · L4</td></tr>
+        <tr><td><code>_call_api(...) / _call_ollama(...)</code></td><td>两个引擎各自唯一出口；qwen3 系自动关 enable_thinking · L4</td></tr>
         <tr><td><code>_warm_model()</code></td><td>启动预热，后台线程 · L4</td></tr>
-        <tr><td><code>build_context(conv) → str</code></td><td>记忆拼装，conv 无效返回空串 · L5</td></tr>
-        <tr><td><code>suggest_mode(draft, recipient) → mode</code></td><td>语气推荐，保守策略 · L2</td></tr>
+        <tr><td><code>build_context(conv_name) → str</code></td><td>记忆拼装，conv 无效返回空串 · L5（context.py）</td></tr>
+        <tr><td><code>style_card(my_name) → str</code></td><td>自我卡：从你的历史消息提炼口吻注入 · L5（context.py）</td></tr>
       </table>
     </details>
   </section>
 
   <footer>
-    <span>嘴替 · 系统架构 v2 · 2026-09-18</span>
+    <span>小替 · 系统架构 v3 · 2026-09-21</span>
     <span>配色令牌与产品 UI 同源（#4C7DFF / #8A5CFF / 深色卡片系）</span>
   </footer>
 </div>
