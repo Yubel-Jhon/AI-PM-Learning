@@ -44,6 +44,11 @@ except Exception:
     HAS_CTX = False
 
 try:
+    import runlog as _runlog          # 可观测性：运行日志/指标（缺了不挡改写，只少数据）
+except Exception:
+    _runlog = None
+
+try:
     import keyboard  # 全局热键（Windows 一般无需管理员）
 except Exception:
     print("缺少 keyboard 库：pip install keyboard")
@@ -690,6 +695,18 @@ class ZuitiApp:
         self._set(self._redraw_auto)
         self._save_cfg()
 
+    # ---------------- 可观测性 ----------------
+    def _obs(self, rec):
+        """往运行日志落一条。缺 runlog 模块时静默跳过——观测层永远不挡主流程。"""
+        if _runlog is None:
+            return
+        run = getattr(self, "_run", None)
+        if run:
+            rec.setdefault("run", run["id"])
+            if rec.get("type") == "action":
+                rec.setdefault("total_ms", int((time.time() - run["t0"]) * 1000))
+        _runlog.append(rec)
+
     # ---------------- 热键 ----------------
     def _register_hotkey(self):
         try:
@@ -734,6 +751,8 @@ class ZuitiApp:
 
     # ---------------- 核心流水线 ----------------
     def run_pipeline(self):
+        # 可观测性：一次 Alt+Z = 一个 run；预览窗里换一版/换档共用 run，只加 seq
+        self._run = {"id": os.urandom(4).hex(), "seq": 0, "t0": time.time()}
         clip0 = ""
         try:
             clip0 = pyperclip.paste()
@@ -749,10 +768,12 @@ class ZuitiApp:
                 self._status(f"没读到字：焦点在「{who[:12]}」，先点进钉钉输入框", C_ERR, state="err")
             else:
                 self._status("没读到你写的字：先在输入框里全选", C_ERR, state="err")
+            self._obs({"type": "action", "action": "no_draft"})
             return
         if len(draft) > 200:
             self._status("抓到内容过长，可能选错了，已中止", C_ERR, state="err")
             self._restore_clip(clip0)
+            self._obs({"type": "action", "action": "draft_too_long", "len": len(draft)})
             return
 
         self._autopush = False
@@ -769,6 +790,7 @@ class ZuitiApp:
         if not out:
             self._status("没改出内容，原样保留没发", C_ERR, state="err")
             self._restore_clip(clip0)
+            self._obs({"type": "action", "action": "no_output"})
             return
 
         if degraded:
@@ -783,9 +805,11 @@ class ZuitiApp:
             time.sleep(float(self.cfg.get("grace_seconds", 1.2)))
             if self._cancel.is_set():
                 self._status("已取消，没发出去", C_WARN, state="idle")
+                self._obs({"type": "action", "action": "cancelled"})
             else:
                 self._press_send()
                 self._status("已发出 ✓", C_OK, state="done")
+                self._obs({"type": "action", "action": "auto_sent"})
         else:
             # 预览模式：先开窗，改写边出字边显示；框里可直接改字，Enter 发的是改过的
             sent, last = self._preview_flow(draft)
@@ -794,8 +818,13 @@ class ZuitiApp:
                 self._paste(sent)
                 self._press_send()
                 self._status("已发出 ✓", C_OK, state="done")
+                # 手改后发 = 用户对成稿不满意，是规则盲区的最硬信号（zuiti-evolve L1/L2 都吃这个）
+                self._obs({"type": "action",
+                           "action": "edited_sent" if (last and sent and sent != last) else "sent"})
             else:
                 self._status("已放弃 · 成稿在剪贴板里", C_WARN, state="idle")
+                self._obs({"type": "action", "action": "cancelled",
+                           "copied": bool(getattr(self, "_pv_copied", False))})
                 if last:
                     try:
                         pyperclip.copy(last)
@@ -890,13 +919,40 @@ class ZuitiApp:
     def _rewrite(self, draft, variation=False, on_token=None, on_note=None):
         """改写主入口：缓存 → 模型 → 清洗 → 质检，不合格带原因重试一次。
         on_token(部分成稿) 边出字边回调、on_note(过程说明) 给预览窗；不传则行为同前。
-        返回 (成稿, degraded)；模型不可用时走本地规则降级。"""
+        返回 (成稿, degraded)；模型不可用时走本地规则降级。
+        每次调用向运行日志落一条 attempt（引擎/耗时/档位/违规码/结局），见 runlog.py。"""
+        run = getattr(self, "_run", None)
+        if run is not None:
+            run["seq"] = run.get("seq", 0) + 1
+        t0 = time.time()
+
+        def _attempt(outcome, out, viol=None, retry_viol=None, engine=None, extra=None):
+            if run is None or _runlog is None:
+                return
+            rec = {"type": "attempt", "seq": run.get("seq", 0),
+                   "mode": self.mode, "rec": self.recipient, "ctx": bool(self._ctxblock),
+                   "engine": engine or getattr(self, "_last_engine", "?"),
+                   "ms": int((time.time() - t0) * 1000),
+                   "len_in": len(draft or ""), "len_out": len(out or ""),
+                   "outcome": outcome}
+            if viol:
+                rec["viol"] = viol
+            if retry_viol:
+                rec["retry_viol"] = retry_viol
+            err = getattr(self, "_last_err", "")
+            if err:
+                rec["err"] = err
+            if extra:
+                rec.update(extra)
+            _runlog.append(rec)
+
         key = (draft, self.mode, self.recipient, self.conv)
         if not variation:
             hit = self._cache.get(key)
             if hit:
                 if on_note:
                     on_note("✓ 通过（同输入复用上一版）")
+                _attempt("cache", hit, engine="cache")
                 return hit, False
         user_prompt = (self._ctxblock + "\n\n" if self._ctxblock else "") + "【我要发出去的原话】\n" + draft
         temp = float(self.cfg.get("temperature", 0.5)) + (0.25 if variation else 0.0)
@@ -909,8 +965,12 @@ class ZuitiApp:
         except Exception:
             if on_note:
                 on_note("模型不可用 → 已换本地保守版")
-            return self._trim_len(self._rule_fallback(draft)), True   # 模型不可用 → 本地规则降级
+            fb = self._trim_len(self._rule_fallback(draft))
+            _attempt("degraded", fb, engine="fallback_rule")   # 模型不可用 → 本地规则降级
+            return fb, True
         reasons = self._violations(draft, out)
+        outcome = "ok"
+        v2 = None
         if reasons:
             if on_note:
                 on_note("⚠ " + "；".join(reasons[:2]) + " → 自动重写中")
@@ -923,23 +983,34 @@ class ZuitiApp:
                     temp, on_token=on_token, on_note=on_note))
             except Exception:
                 out2 = ""
+            v2 = _runlog.viol_codes(self._violations(draft, out2)) if (out2 and _runlog) else None
             if out2 and not self._violations(draft, out2):
                 out = out2
+                outcome = "retry_ok"
                 if on_note:
                     on_note("✓ 重写后通过")
             elif out and not any(w in out.lower() for w in self._CURSE) and not self._fact_check(draft, out):
+                outcome = "kept_minor"
                 if on_note:                           # 格式小毛病可容忍：第一版已清洗且没改事实
                     on_note("⚠ " + "；".join(reasons[:2]) + " · 小毛病可容忍，保留这版")
             else:
                 out = self._rule_fallback(draft)      # 事实被改 → 宁可退回保守规则版
+                outcome = "fallback_rule"
                 if on_note:
                     on_note("⚠ 事实被改 → 已换本地保守版，原意优先")
         elif on_note:
             on_note("✓ 通过")
+        trimmed = False
         if len(out) > 50:      # 重写两次仍超长，或兜底稿本身就长：兜底截断，硬规则必须成立
             out = self._trim_len(out)
+            trimmed = True
             if on_note:
                 on_note("⚠ 还是超长 → 已截到50字内")
+        if run is not None and _runlog is not None:
+            _attempt(outcome, out,
+                     viol=_runlog.viol_codes(reasons) if reasons else None,
+                     retry_viol=v2,
+                     extra={"trimmed": True} if trimmed else None)
         if not variation:
             if len(self._cache) > 30:
                 self._cache.clear()
@@ -994,14 +1065,19 @@ class ZuitiApp:
         return f"本地·{self.cfg.get('model', '')}"
 
     def _call_llm(self, prompt, system, temperature=None, on_token=None, on_note=None):
-        """按 provider 分发。api 档请求失败自动回本地模型再试一次，都不行才走规则兜底。"""
+        """按 provider 分发。api 档请求失败自动回本地模型再试一次，都不行才走规则兜底。
+        顺手记下这回答的是谁（观测层用）：_last_engine=api/ollama，_last_err=api 档报错。"""
         if self.cfg.get("provider", "api") == "api" and self._api_key():
             try:
-                return self._call_api(prompt, system, temperature, on_token)
+                out = self._call_api(prompt, system, temperature, on_token)
+                self._last_engine, self._last_err = "api", ""
+                return out
             except Exception as e:
+                self._last_engine, self._last_err = "ollama", str(e)[:80]
                 if on_note:
                     on_note(f"api 不可用（{str(e)[:40]}）→ 回本地模型")
                 return self._call_ollama(prompt, system, temperature, on_token)
+        self._last_engine, self._last_err = "ollama", ""
         return self._call_ollama(prompt, system, temperature, on_token)
 
     def _call_api(self, prompt, system, temperature=None, on_token=None):
@@ -1254,6 +1330,7 @@ class ZuitiApp:
         Esc 放弃，Alt+R 拿原始草稿换一版（不在上一版上改，防意思漂移）。
         返回 (发送的文本 or None, 最后一版成稿)。"""
         state = {"busy": True, "closed": False, "sent": None, "last": ""}
+        self._pv_copied = False
         ev = threading.Event()
         built = threading.Event()
         ui = {}
@@ -1370,6 +1447,7 @@ class ZuitiApp:
                 return
             self.root.clipboard_clear()
             self.root.clipboard_append(s)
+            self._pv_copied = True
             safe(lambda: ui["verdict"].configure(text="✓ 已复制到剪贴板（未发送）", fg=C_OK))
 
         def build():
@@ -1457,6 +1535,26 @@ class ZuitiApp:
 
 
 def main():
+    # --stats：只看运行指标，不启动悬浮窗（观测层的"平时能看"）
+    if "--stats" in sys.argv:
+        days = 7
+        if "--days" in sys.argv:
+            i = sys.argv.index("--days")
+            if i + 1 < len(sys.argv):
+                try:
+                    days = int(sys.argv[i + 1])
+                except ValueError:
+                    pass
+        if _runlog is None:
+            print("runlog.py 不在脚本旁边，读不了运行日志")
+            return
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")   # 管道/重定向时别按 GBK 编码
+        except Exception:
+            pass
+        print(_runlog.format_stats(_runlog.stats(days))
+              or f"最近 {days} 天没有运行记录（{_runlog.RUNLOG_PATH}）——按一次 Alt+Z 改写就有了")
+        return
     root = tk.Tk()
     app = ZuitiApp(root)
     try:

@@ -8,3 +8,6 @@ __pycache__/
 
 # API key 只放本地（api 档引擎）
 local_settings.json
+
+# 运行日志（可观测性）：只有数字/档位/违规码，也只存本地
+script/self-improvement/

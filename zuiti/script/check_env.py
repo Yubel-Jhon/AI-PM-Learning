@@ -160,6 +160,19 @@ def main():
             print(f"  {mark(False)} {host} 连不上 —— 当前档改写会走规则兜底")
             print("    修：启动 Ollama（开始菜单开 Ollama，或 ollama serve）")
 
+    # ---------- 运行日志 ----------
+    section("运行日志（可观测性）")
+    try:
+        import runlog
+        s = runlog.stats(7)
+        if not s:
+            print(f"  最近 7 天没有记录（{runlog.RUNLOG_PATH}）——不是问题，按一次 Alt+Z 就有")
+        else:
+            print(runlog.format_stats(s, indent="  "))
+            print(f"  明细: {runlog.RUNLOG_PATH}（按 run 字段可追单次改写全程）")
+    except Exception as e:
+        print(f"  {mark(False)} 读不了运行日志: {e}")
+
     # ---------- persona_cards ----------
     section("persona_cards（人物卡）")
     pdir = os.path.join(os.path.dirname(ctx.DB), "persona_cards")
