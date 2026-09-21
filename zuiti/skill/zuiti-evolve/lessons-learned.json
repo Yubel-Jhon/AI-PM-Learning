@@ -1,0 +1,86 @@
+{
+  "_readme": "嘴替经验库种子（开发史实踩的坑，脱敏：不含原话/人名）。运行时追加写在 Desktop/嘴替-zuiti/self-improvement/lessons-learned.json，本文件随 skill 同步、只读不写。applied 后半年没再犯移入 archive。",
+  "lessons": [
+    {
+      "id": "lesson-202609192200",
+      "date": "2026-09-19",
+      "category": "引擎",
+      "lesson": "qwen3 系默认 enable_thinking=true，SSE 首块是 reasoning_content，把 max_tokens(160) 和 60s 超时全烧掉——表现为 13~66s 出稿甚至掉兜底。修：_call_api 对模型名含 qwen3 自动加 enable_thinking:False，实测 2.7~3.7s。",
+      "evidence": "成稿=原话（掉兜底的信号），耗时 13~66s",
+      "impact": "high",
+      "applied": true,
+      "applied_date": "2026-09-19"
+    },
+    {
+      "id": "lesson-202609201000",
+      "date": "2026-09-20",
+      "category": "质检",
+      "lesson": "脏字检查是两张表各管各的：模块级 _CURSE_WORDS（草稿火气，参与推档）与 self._CURSE/_OUT_BANNED（成稿 lint+兜底）。只改一张 → 兜底路径漏 tm/sb，降级时原话脏字原样发出去。规则改动两边都要动。",
+      "evidence": "降级成稿残留拼音简写脏字，草稿档位判断正常",
+      "impact": "high",
+      "applied": true,
+      "applied_date": "2026-09-20"
+    },
+    {
+      "id": "lesson-202609201020",
+      "date": "2026-09-20",
+      "category": "质检",
+      "lesson": "超 50 字直接盲截会截断语义。改为质检驱动：带原因重写一次 + 标点兜底截断，不再无脑砍。",
+      "evidence": "成稿在句中被截断",
+      "impact": "high",
+      "applied": true,
+      "applied_date": "2026-09-20"
+    },
+    {
+      "id": "lesson-202609201040",
+      "date": "2026-09-20",
+      "category": "引擎",
+      "lesson": "成稿=原话 不是改写成功，是掉到规则兜底的信号。看输出要先判断走的哪条链路。",
+      "evidence": "API 挂掉时兜底成稿与原话完全一致，曾被误认为正常",
+      "impact": "mid",
+      "applied": true,
+      "applied_date": "2026-09-20"
+    },
+    {
+      "id": "lesson-202609191800",
+      "date": "2026-09-19",
+      "category": "规则",
+      "lesson": "成稿里混入「改写」「版本一」「以下是」等元话语 = 输出协议破了。硬规则 6 明令禁止；候选模式的单字母 A/B/C 是选项标记不算元话语，要单独立例外。",
+      "evidence": "成稿带前缀和说明",
+      "impact": "mid",
+      "applied": true,
+      "applied_date": "2026-09-19"
+    },
+    {
+      "id": "lesson-202609191900",
+      "date": "2026-09-19",
+      "category": "规则",
+      "lesson": "链式改写会让意思漂移：在上一版上继续改，几轮后立场就走样。「换个说法」必须拿原始原话重新改。",
+      "evidence": "连续换说法后成稿立场与原话相反",
+      "impact": "mid",
+      "applied": true,
+      "applied_date": "2026-09-19"
+    },
+    {
+      "id": "lesson-202609190100",
+      "date": "2026-09-19",
+      "category": "引擎",
+      "lesson": "Windows 控制台默认 GBK，中文输出直接崩。脚本写文件/打印统一 UTF-8 并做编码兜底。",
+      "evidence": "控制台报 UnicodeEncodeError",
+      "impact": "mid",
+      "applied": true,
+      "applied_date": "2026-09-19"
+    },
+    {
+      "id": "lesson-202609211500",
+      "date": "2026-09-21",
+      "category": "同步",
+      "lesson": "三副本换行符 CRLF/LF 不齐，diff 全文报 1,163c1,163 假差异，会误判副本漂移。校验必须 diff --strip-trailing-cr 看内容级差异。",
+      "evidence": "三副本内容一致但裸 diff 全文报差异",
+      "impact": "low",
+      "applied": true,
+      "applied_date": "2026-09-21"
+    }
+  ],
+  "archive": []
+}
