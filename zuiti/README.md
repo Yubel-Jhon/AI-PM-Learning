@@ -32,6 +32,31 @@
 
 没有真实数据也想体验？`python script/build_demo_db.py` 生成演示库后，设置环境变量 `ZUITI_DB=demo_context.db` 再启动，对象下拉里就是虚构人设。
 
+## 🔁 工作流程
+
+**首次使用（4 步）**
+
+1. 双击 `script/安装依赖.bat`
+2. 把 DashScope key 写进 `script/local_settings.json`（隐私档则改 `script/config.json` 切 ollama）
+3. 要记忆库就建库：钉钉聊天记录导出放 `script/dumps/`，跑 `python script/build_context_db.py`（不建也能用，自动走通用模式）
+4. 双击 `script/启动嘴替.bat`，收起成右下角小图标，不挡内容
+
+**每条消息（3 步）**
+
+```
+打真心话 → 按 Alt+Z → 预览窗拍板
+              │
+              └─ 小替内部：读人物卡/头像分寸 → 判招式选语气档 → 改写
+                          → 格式 lint + 原意保持度两层质检（不过自动重写）→ 出稿
+```
+
+- 预览窗：**Enter** 发送 / **Esc** 放弃 / **Alt+R** 拿原话换一版；出稿后框里可直接改再发
+- 记忆库隔段时间刷新：拉新聊天记录 → 重跑 `python script/build_context_db.py` → 悬浮窗右键「重载上下文库」
+
+**认人闭环（越用越准）**
+
+人物分析出「人物卡」→ 落缓存进关系卡 → 每次改写自动带这套分寸 → 实战实况回写卡的「近期观察」→ 下次分析先读它（证实留用、打脸修正）。
+
 ## ⚙️ 配置
 
 `script/config.json` 常用项：
