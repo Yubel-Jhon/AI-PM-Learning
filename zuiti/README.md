@@ -21,20 +21,20 @@
 
 ## 📦 安装
 
-1. Python 3.8+，双击 `tool/安装依赖.bat`（或 `pip install -r requirements.txt`）
+1. Python 3.8+，双击 `script/安装依赖.bat`（或 `pip install -r requirements.txt`）
 2. 引擎二选一，默认云端：
-   - **云端**：把 DashScope key 写进 `tool/local_settings.json`（`{"api_key": "sk-…"}`，已 gitignore）
-   - **本地隐私档**：装 [Ollama](https://ollama.com) 并 `ollama pull qwen2.5:7b`，`tool/config.json` 里 `provider` 改 `ollama`
+   - **云端**：把 DashScope key 写进 `script/local_settings.json`（`{"api_key": "sk-…"}`，已 gitignore）
+   - **本地隐私档**：装 [Ollama](https://ollama.com) 并 `ollama pull qwen2.5:7b`，`script/config.json` 里 `provider` 改 `ollama`
 
 ## 🚀 快速开始
 
-双击 `tool/启动嘴替.bat` → 在钉钉输入框打完草稿 → 光标放输入框里按 **Alt+Z** → 预览窗拍板。
+双击 `script/启动嘴替.bat` → 在钉钉输入框打完草稿 → 光标放输入框里按 **Alt+Z** → 预览窗拍板。
 
-没有真实数据也想体验？`python tool/build_demo_db.py` 生成演示库后，设置环境变量 `ZUITI_DB=demo_context.db` 再启动，对象下拉里就是虚构人设。
+没有真实数据也想体验？`python script/build_demo_db.py` 生成演示库后，设置环境变量 `ZUITI_DB=demo_context.db` 再启动，对象下拉里就是虚构人设。
 
 ## ⚙️ 配置
 
-`tool/config.json` 常用项：
+`script/config.json` 常用项：
 
 | 键 | 说明 |
 |---|---|
@@ -60,6 +60,6 @@ API key 也可用环境变量 `DASHSCOPE_API_KEY`。全量配置项见 [docs/设
 
 ## 🛠 自检
 
-出问题先双击 `tool/检查环境.bat`：生效库 / 每会话条数 / 自我卡 / config / Ollama 在线情况一次看全，每个 ✗ 都带"修：xxx"。
+出问题先双击 `script/检查环境.bat`：生效库 / 每会话条数 / 自我卡 / config / Ollama 在线情况一次看全，每个 ✗ 都带"修：xxx"。
 
 人物分析方法论、质检细节、记忆库分层等全量说明见 **[docs/设计细节.md](docs/设计细节.md)**，功能全景图见 `嘴替-架构图-v2.html`。
