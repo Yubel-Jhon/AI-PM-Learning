@@ -12,7 +12,7 @@
   "keep_alive": "30m",
   "num_ctx": 4096,
   "mimic_me": true,
-  "my_name": "大宇",
+  "my_name": "",
   "req_timeout": 60,
   "key_pause": 0.12,
   "grace_seconds": 1.2,

@@ -1,6 +1,8 @@
-# 本地隐私数据 —— 不入库（真实钉钉聊天记录/构建产物）
+# 真实对话数据只存本地，绝不入库
 dumps/
 context.db
+demo_context.db
+persona_cards/
 __pycache__/
 *.pyc
 
